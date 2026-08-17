@@ -19,12 +19,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Generar contratos + gate de digests
+      - name: Generar contratos + gate de digests + auditoría IPC
         working-directory: seasi-despacho
         run: |
           npm install --no-audit --no-fund
           npm run contracts:check
+          npm run audit:ipc
           npm run typecheck
           npm test
         env:
           SEASI_SCHEMAS_DIR: ${{ github.workspace }}/SEASI-CORE/schemas/v1
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"

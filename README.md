@@ -2,45 +2,57 @@
 
 **Shell de escritorio local-first para el kernel [SEASI-CORE](../SEASI-CORE)** — el "despacho fiscal" de SEASI. Electron + TypeScript estricto + React. Cliente cero: PGK.
 
-> Change de origen: `SEASI-CORE/openspec/changes/sea-sic-core-v0/` (proposal, design, specs, tasks). Este repo implementa los bloques 1.5 (lado TS) y 3.x del plan.
+> Change de origen: `SEASI-CORE/openspec/changes/sea-sic-core-v0/`. Despliegue: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Arquitectura en una línea
 
 ```
-UI React ──(contextBridge: window.seasi.call)──▶ main Electron ──(JSON-RPC stdio)──▶ uv run python -m seasi_core.rpc
+UI React ──(window.seasi.call / window.seasi.shell)──▶ main Electron ──(JSON-RPC stdio)──▶ uv run python -m seasi_core.rpc
 ```
 
-- **Un solo canal IPC** (`seasi:rpc`) — superficie auditable.
-- **El canal de negocio es JSON-RPC estructurado**; nunca se parsea salida de terminal para extraer estado.
-- Los contratos (session, artifact, hitl-pause, shell-api) se **generan** desde `SEASI-CORE/schemas/v1` con los mismos sha256 que verifica el CI del kernel: si algo deriva, falla en ambas repos.
+- **Un solo canal IPC de kernel** (`seasi:rpc`) + canales locales namespaced `shell:*` — superficie auditada por `scripts/audit-ipc.mjs` (CI).
+- **El canal de negocio es JSON-RPC estructurado**; el "log visual" de sesión es la cola del ledger (`seasi.event.tail`), nunca parseo de terminal (v0: la vista de log de terminal en vivo llega con el adaptador streaming; hoy los eventos del ledger SON el log).
+- Contratos **generados** desde `SEASI-CORE/schemas/v1` con los mismos sha256 que verifica el CI del kernel: si algo deriva, falla en ambas repos. División documentada: **zod valida forma; pydantic + scope_guard validan semántica** (invariants cross-field no exportables a draft-07).
 
-## Reglas del repo
+## Dominios (screaming architecture)
 
-1. `src/contracts/gen/` es **generado** — no se edita a mano (`npm run contracts`).
-2. Los dominios van por *screaming architecture*: `src/domains/<dominio>/` (no `/components` genéricos).
-3. Seguridad por defecto: `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`, CSP en el renderer, `setWindowOpenHandler` deny.
-4. Sin telemetría. Diagnóstico = paquete local exportado por el usuario.
+| Dominio | Qué | Tests |
+|---|---|---|
+| `kernel-bridge/` | cliente tipado RPC, errores kernel→tipos | unit + integración REAL contra kernel vía `uv` |
+| `brain/` | parser `[[wikilinks]]`, grafo, board kanban, mover tarjetas | corpus adversarial + perf 5k links |
+| `update/` | feed firmado ed25519, anti-downgrade, verificación de artefacto | claves reales, forjas, canal equivocado |
+| `backup/` | backups con ancla de hashes + restauración verificada | corrupción byte, manifest ilegible, truncamiento |
+| `vault/` | safeStorage + env-injection; valores NUNCA cruzan IPC | no-fuga por serialización, nombres fail-closed |
+| `branding/` | tenant.json en 3 planos (marca/capacidades/gobierno) | fail-closed, gramática tenant_id |
 
 ## Desarrollo
 
 ```bash
-npm install                # instala deps (ajusta versiones si npm resuelve distinto)
-npm run contracts          # regenera contratos desde ../SEASI-CORE (o SEASI_SCHEMAS_DIR=...)
-npm run contracts:check    # gate CI: drift imposible
-npm run typecheck && npm test
-SEASI_CORE_DIR=../SEASI-CORE npm run dev
+ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install   # deps sin binario (tests/typecheck)
+npm run contracts && npm run contracts:check  # SSOT gate
+npm run typecheck && npm test                 # 54 tests (incluye kernel real vía uv)
+node scripts/audit-ipc.mjs                    # superficie IPC auditada
+SEASI_CORE_DIR=../SEASI-CORE npm run dev      # con binario real de electron
 ```
 
-Requisitos: Node 22+, `uv` con SEASI-CORE instalable (`uv run --project ../SEASI-CORE python -m seasi_core.rpc` debe responder).
+Requisitos: Node 22+, `uv` con SEASI-CORE al lado (`~/SEASI-CORE`).
 
-## Estado (v0.1.0)
+## Reglas del repo
 
-- [x] Bootstrap electron-vite + TS strict
-- [x] Puente preload mínimo (un objeto, un método)
-- [x] Generador de contratos con gate de digests
-- [x] Tests de paridad kernel↔shell
-- [ ] Rail de despacho, sesiones, cola HITL, vault, brain (bloques 3.3–3.11 del change)
+1. `src/contracts/gen/` es **generado** — no se edita a mano.
+2. Seguridad por defecto: sandbox, contextIsolation, nodeIntegration off, CSP, window-open deny, `shell:*` validan TODO input de renderer (regex estrictos en brain/backup ids).
+3. Sin telemetría. Diagnóstico = paquete local exportado por el usuario.
+4. Estado "interno": sin firma; ver fase comercial en DEPLOYMENT.md antes de instalar fuera de PGK.
 
-## Despliegue
+## Estado v0.1.0
 
-Fase INTERNA (este repo, hoy): sin firma — `npm run dev` o build local. La fase COMERCIAL (Developer ID, notarización, firma Windows, canales por inquilino) es un **gate explícito** del change: nada externo a PGK se despliega antes de cruzarlo.
+- [x] Kernel channel + 6 métodos RPC (más `seasi.hitl.create` en kernel)
+- [x] Rail de despacho (sesiones por cliente desde el ledger), log vivo
+- [x] Cola HITL: crear/listar/aprobar/rechazar con intents sellados
+- [x] Brain: grafo SVG + board + edición de notas
+- [x] Vault (safeStorage + env overlay al kernel)
+- [x] Backups con ancla + verificación; diagnóstico local; update check firmado
+- [x] White-label: tenant.json aplicado a UI (nombre/colores)
+- [ ] Proxy local MCP para OAuth (task 3.7 — pendiente)
+- [ ] Dashboard de uso por modelo (task 3.10 — parcial: badge kernel)
+- [ ] Log de terminal PTY en vivo (llega con streaming del adaptador pi)

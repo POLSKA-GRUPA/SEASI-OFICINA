@@ -1,6 +1,14 @@
 /**
  * Parity gate: the TS contracts must match the kernel schemas byte-for-byte
  * (same sha256 digests the Python CI checks) and validate real payloads.
+ *
+ * División documentada de responsabilidades:
+ *   - Zod (aquí) valida la FORMA (campos, tipos, longitudes, enums, regex).
+ *   - Pydantic + scope_guard (kernel) validan la SEMÁNTICA cross-field
+ *     (decisión coherente, paths sin escape, expiración) — invariants que
+ *     JSON Schema draft-07 no puede expresar y que llegan ya validadas en
+ *     toda respuesta del kernel. La suite de integración real cubre esa
+ *     semántica contra el kernel vivo.
  */
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
@@ -11,6 +19,7 @@ import {
   ArtifactSchema,
   CONTRACT_DIGESTS,
   HitlPauseSchema,
+  ShellApiManifestSchema,
   TenantScopeSchema,
 } from "../src/contracts/gen/schemas";
 
@@ -39,10 +48,10 @@ describe("contract parity (kernel <-> shell)", () => {
   });
 });
 
-describe("zod contracts validate like pydantic", () => {
+describe("zod shape validation (semántica vive en el kernel)", () => {
   const tenant = { tenant_id: "pgk" };
 
-  it("accepts a valid session and rejects a bad period", () => {
+  it("acepta sesión válida; default state=created; schema_version constante", () => {
     const ok = AgentSessionSchema.parse({
       tenant,
       client_ref: "B82211806",
@@ -50,36 +59,67 @@ describe("zod contracts validate like pydantic", () => {
       adapter: "pi",
     });
     expect(ok.state).toBe("created");
+    expect(ok.schema_version).toBe("seasi.session/v1");
+    // campos requeridos ausentes → fallo
     expect(() =>
-      AgentSessionSchema.parse({ tenant, client_ref: "X", period_ref: "2026T9", adapter: "pi" }),
-    ).toThrow();
+      AgentSessionSchema.parse({ tenant, client_ref: "X", period_ref: "2026T3" }),
+    ).toThrow(); // sin adapter
   });
 
-  it("rejects artifact path escapes at the contract level", () => {
+  it("artifact: hash 64-hex y kind dotted exigidos; shape de path string", () => {
     const base = {
-      session_id: "00000000-0000-0000-0000-000000000001",
+      session_id: "00000000-0000-4000-8000-000000000001",
       tenant,
       kind: "aeat.model",
       content_hash: "a".repeat(64),
     };
-    expect(() => ArtifactSchema.parse({ ...base, path: "/etc/passwd" })).toThrow();
-    expect(() => ArtifactSchema.parse({ ...base, path: "a/../b.pdf" })).toThrow();
-    expect(ArtifactSchema.parse({ ...base, path: "clientes/X/f.pdf" }).kind).toBe("aeat.model");
+    expect(() => ArtifactSchema.parse({ ...base, content_hash: "XYZ" })).toThrow();
+    expect(() => ArtifactSchema.parse({ ...base, kind: "nodots" })).toThrow();
+    expect(() => ArtifactSchema.parse({ ...base, extra: 1 })).toThrow(); // strict
+    expect(ArtifactSchema.parse({ ...base, path: "clientes/X/f.pdf" }).path).toBe(
+      "clientes/X/f.pdf",
+    );
   });
 
-  it("hitl pause requires consistent decision fields", () => {
+  it("hitl pause: shape pending; enum status; digest 64-hex", () => {
     const base = {
-      session_id: "00000000-0000-0000-0000-000000000001",
+      session_id: "00000000-0000-4000-8000-000000000001",
       tenant,
       capability_id: "filing.submit",
       payload_digest: "b".repeat(64),
       expires_at: new Date(Date.now() + 600_000).toISOString(),
     };
-    expect(HitlPauseSchema.parse(base).status).toBe("pending");
-    expect(() => HitlPauseSchema.parse({ ...base, decided_by: "kenyi" })).toThrow();
+    const pause = HitlPauseSchema.parse(base);
+    expect(pause.status).toBe("pending");
+    expect(() => HitlPauseSchema.parse({ ...base, payload_digest: "corto" })).toThrow();
+    expect(() =>
+      HitlPauseSchema.parse({ ...base, status: "quantum" as never }),
+    ).toThrow();
   });
 
-  it("tenant ids obey the kernel grammar", () => {
+  it("shell-api manifest valida la forma (longitudes/strict)", () => {
+    const m = ShellApiManifestSchema.parse({
+      schema_version: "seasi/shell-api/v1",
+      methods: [
+        { name: "seasi.version", effect_gated: false },
+        { name: "seasi.hitl.decide", effect_gated: true },
+      ],
+    });
+    expect(m.methods.length).toBe(2);
+    // strict: campos extra prohibidos
+    expect(() =>
+      ShellApiManifestSchema.parse({
+        schema_version: "seasi/shell-api/v1",
+        methods: [{ name: "seasi.version", hacker: 1 }],
+      }),
+    ).toThrow();
+    // NOTA SSOT: la gramática seasi.* y la unicidad cross-item son
+    // field_validator/model_validator de pydantic → NO exportables a
+    // draft-07. El kernel las aplica en runtime (-32601/-32602) y la suite
+    // de integración real las cubre contra `uv run python -m seasi_core.rpc`.
+  });
+
+  it("tenant ids obedecen la gramática del kernel", () => {
     expect(TenantScopeSchema.parse({ tenant_id: "pgk" }).tenant_id).toBe("pgk");
     expect(() => TenantScopeSchema.parse({ tenant_id: "PGK!" })).toThrow();
   });

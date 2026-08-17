@@ -1,0 +1,79 @@
+# Despliegue — SEASI Despacho
+
+> Fuente de verdad de fases: `SEASI-CORE/openspec/changes/sea-sic-core-v0/specs/deployment-infra/spec.md`
+
+## Fase INTERNA (vigente) — coste 0 €
+
+Todo lo de esta fase está pensado para PGK (cliente cero) sin pagar firmas todavía.
+
+### Build local
+
+```bash
+npm run contracts        # regenera zod desde ../SEASI-CORE/schemas/v1
+npm run typecheck && npm test
+npm run build            # out/main + out/preload + out/renderer
+# DMG empaquetado (cuando toque): electron-builder — NO todavía, primero gate comercial
+```
+
+Arranque en desarrollo (requiere binario real de Electron):
+
+```bash
+ELECTRON_SKIP_BINARY_DOWNLOAD= npm install   # (una vez, para tener el binario)
+SEASI_CORE_DIR=../SEASI-CORE npm run dev
+```
+
+### Instalación interna (sin firma)
+
+```bash
+bash scripts/install.sh ./dist/mac-arm64
+```
+
+El script: copia con `ditto`, quita cuarentena del build interno y **documenta la
+excepción de Gatekeeper** (clic derecho → Abrir). Nunca toca ajustes globales.
+
+### Canal de updates privado (firmado ed25519)
+
+1. Generar el par de claves UNA vez (la privada jamás entra al repo):
+
+```bash
+node scripts/gen-keys.mjs ./keys
+cp keys/update-public.pem "$HOME/Library/Application Support/seasi-despacho/update-public.pem"
+```
+
+2. Firmar cada release (el feed es un JSON publicado en GitHub Release privado / R2):
+
+```bash
+node scripts/sign-update.mjs \
+  --artifact dist/SEASI-Despacho-0.2.0.dmg \
+  --version 0.2.0 --channel pgk-internal \
+  --key keys/update-private.pem --out dist/feed.json
+```
+
+3. La app (pestaña Sistema) comprueba el feed con `SEASI_UPDATE_FEED=<url>`:
+   verifica firma ed25519 (clave pública embebida), rechaza downgrades,
+   y tras descargar verifica el sha256 del artefacto. La aplicación del
+   paquete es un paso manual explícito del usuario en v0 (nunca silencioso).
+
+### Backups locales
+
+Pestaña Sistema → «Crear backup ahora» copia ledger.db (+wal/+shm), brain/
+y tenant.json a `backups/<id>/` con `manifest.json` de hashes. «Verificar»
+re-hashea todo (ancla que detecta lo que la cadena de eventos no puede ver:
+pérdida de cola). Restauración: `restoreBackup` (mismo dominio, testeado).
+
+### Diagnóstico sin telemetría
+
+Pestaña Sistema → «Exportar paquete»: ledger local + README a una carpeta que
+elige el usuario. Nada sale de la máquina automáticamente.
+
+## Fase COMERCIAL (gate explícito — NO cruzado aún)
+
+Checklist bloqueante antes de CUALQUIER inquilino externo:
+
+- [ ] Apple Developer Program (99 €/año): Developer ID + notarización stapled
+- [ ] Firma Windows: Azure Trusted Signing (~10 €/mes)
+- [ ] CI matrix mac-arm64 + win-x64: lint → tests → build → firma → notariza → publica por canal
+- [ ] Canales por inquilino con entitlement firmado (rechazo de paquetes cruzados)
+- [ ] electron-builder con DMG firmado + instalador Windows firmado
+
+Mientras esto esté sin cruzar: **ninguna instalación fuera de PGK**.
