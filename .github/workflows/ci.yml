@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  contracts-and-quality:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: seasi-despacho
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/SEASI-CORE
+          path: SEASI-CORE
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generar contratos + gate de digests
+        working-directory: seasi-despacho
+        run: |
+          npm install --no-audit --no-fund
+          npm run contracts:check
+          npm run typecheck
+          npm test
+        env:
+          SEASI_SCHEMAS_DIR: ${{ github.workspace }}/SEASI-CORE/schemas/v1
