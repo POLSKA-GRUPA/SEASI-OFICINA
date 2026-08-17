@@ -28,6 +28,7 @@ import {
   BackupError,
 } from "../domains/backup/backup";
 import { checkForUpdate, UpdateError } from "../domains/update/updater";
+import { LocalMcpProxy } from "../domains/mcp-proxy/proxy";
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
 
@@ -91,10 +92,19 @@ function startKernel(): ChildProcess {
 }
 
 function deliver(line: string): void {
-  let msg: { id?: number | string; result?: unknown; error?: unknown };
+  let msg: { id?: number | string; method?: string; params?: unknown; result?: unknown; error?: unknown };
   try {
     msg = JSON.parse(line);
   } catch {
+    return;
+  }
+  // Server notification (streaming en vivo): broadcast a todas las ventanas.
+  if (msg.id === undefined || msg.id === null) {
+    if (typeof msg.method === "string" && msg.method.startsWith("seasi.")) {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send("shell:session:event", { method: msg.method, params: msg.params });
+      }
+    }
     return;
   }
   const id = typeof msg.id === "number" ? msg.id : Number(msg.id);
@@ -214,6 +224,37 @@ function createWindow(): void {
   }
 }
 
+let mcpProxy: LocalMcpProxy | null = null;
+
+async function startMcpProxyIfConfigured(): Promise<void> {
+  if (mcpProxy) return;
+  const upstream = process.env.SEASI_MCP_UPSTREAM;
+  if (!upstream) return; // fase interna: opcional
+  const env = getVault().envOverlay();
+  if (!env.MCP_TOKEN_URL || !env.MCP_CLIENT_ID || !env.MCP_CLIENT_SECRET || !env.MCP_REFRESH_TOKEN) {
+    console.error("[mcp] SEASI_MCP_UPSTREAM activo pero faltan credenciales MCP_* en el vault");
+    return;
+  }
+  mcpProxy = new LocalMcpProxy({
+    upstream,
+    tokenUrl: env.MCP_TOKEN_URL,
+    clientId: env.MCP_CLIENT_ID,
+    clientSecret: env.MCP_CLIENT_SECRET,
+    initialAccessToken: "bootstrap", // fuerza refresh antes del primer forward
+    initialRefreshToken: env.MCP_REFRESH_TOKEN,
+    fetcher: async (url, init) => {
+      const res = await globalThis.fetch(url, init);
+      return {
+        status: res.status,
+        json: async () => await res.json(),
+        text: async () => await res.text(),
+      };
+    },
+  });
+  await mcpProxy.start();
+  console.error(`[mcp] proxy escuchando en 127.0.0.1:${mcpProxy.status.port} → ${upstream}`);
+}
+
 // ---------------------------------------------------------------- bootstrap
 
 app.whenReady().then(() => {
@@ -296,6 +337,12 @@ app.whenReady().then(() => {
 
   // branding
   ipcMain.handle("shell:branding:get", () => loadTenantConfig());
+
+  // mcp proxy (estado solamente; tokens jamás cruzan IPC)
+  ipcMain.handle("shell:mcp:status", () =>
+    mcpProxy ? mcpProxy.status : { running: false, port: 0, upstream: null },
+  );
+  void startMcpProxyIfConfigured();
 
   // diagnostics: local export package (user decides what to share)
   ipcMain.handle("shell:diagnostics:export", async () => {

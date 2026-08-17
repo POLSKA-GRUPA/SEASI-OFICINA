@@ -27,6 +27,10 @@ export const VAULT_NAMES = [
   "GROQ_API_KEY",
   "ZAI_API_KEY",
   "ANTHROPIC_API_KEY",
+  "MCP_TOKEN_URL",
+  "MCP_CLIENT_ID",
+  "MCP_CLIENT_SECRET",
+  "MCP_REFRESH_TOKEN",
 ] as const;
 
 export type VaultName = (typeof VAULT_NAMES)[number];

@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { StrictMode, useCallback, useEffect, useMemo, useState, type JSX } from "react";
-import { KernelClient, KernelError, type AgentSessionLike, type HitlPauseLike, type LedgerEventLike } from "../domains/kernel-bridge/client";
+import { KernelClient, KernelError, type AgentSessionLike, type HitlPauseLike, type LedgerEventLike, type UsageRow } from "../domains/kernel-bridge/client";
 import { buildGraph, extractWikilinks, parseRoadmapBoard, type BoardCard } from "../domains/brain/parser";
 import type { TenantConfig } from "../domains/branding/config";
 import "./ui.css";
@@ -20,6 +20,8 @@ type Bridge = {
     backupVerify: (id: string) => Promise<unknown>;
     updateCheck: () => Promise<unknown>;
     branding: () => Promise<unknown>;
+    mcpStatus: () => Promise<unknown>;
+    onSessionEvent: (cb: (payload: { method: string; params: unknown }) => void) => () => void;
     diagnosticsExport: () => Promise<{ exported: boolean; path: string }>;
   };
 };
@@ -30,7 +32,7 @@ const kernel = new KernelClient((m, p) => {
   return bridge.call(m, p);
 });
 
-type Tab = "rail" | "hitl" | "brain" | "vault" | "sistema";
+type Tab = "rail" | "hitl" | "uso" | "brain" | "vault" | "sistema";
 
 export function App(): JSX.Element {
   const [tab, setTab] = useState<Tab>("rail");
@@ -67,9 +69,9 @@ export function App(): JSX.Element {
           <span className="badge mono">tenant {tenant?.tenant_id ?? "…"}</span>
         </header>
         <nav className="tabs">
-          {(["rail", "hitl", "brain", "vault", "sistema"] as Tab[]).map((t) => (
+          {(["rail", "hitl", "uso", "brain", "vault", "sistema"] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-              {t === "rail" ? "Despacho" : t === "hitl" ? "HITL" : t === "vault" ? "Vault" : t === "sistema" ? "Sistema" : "Brain"}
+              {t === "rail" ? "Despacho" : t === "hitl" ? "HITL" : t === "uso" ? "Uso" : t === "vault" ? "Vault" : t === "sistema" ? "Sistema" : "Brain"}
             </button>
           ))}
         </nav>
@@ -77,6 +79,7 @@ export function App(): JSX.Element {
           {error && <div className="banner err">{error}</div>}
           {tab === "rail" && <RailView />}
           {tab === "hitl" && <HitlView />}
+          {tab === "uso" && <UsageView />}
           {tab === "brain" && <BrainView />}
           {tab === "vault" && <VaultView />}
           {tab === "sistema" && <SystemView onTenantLoaded={setTenant} />}
@@ -150,12 +153,22 @@ function RailView(): JSX.Element {
   const [msg, setMsg] = useState<string | null>(null);
   const [log, setLog] = useState<LedgerEventLike[]>([]);
   const [prompt, setPrompt] = useState("");
+  const [live, setLive] = useState<{ method: string; params: unknown }[]>([]);
 
   const tailLog = useCallback(() => {
     kernel.eventTail("pgk", 40).then(setLog).catch(() => undefined);
   }, []);
 
   useEffect(() => { tailLog(); const t = setInterval(tailLog, 4000); return () => clearInterval(t); }, [tailLog]);
+
+  // Streaming en vivo: notificaciones del kernel mientras corre una sesión
+  useEffect(() => {
+    if (!bridge) return;
+    const off = bridge.shell.onSessionEvent((payload) => {
+      setLive((prev) => [...prev.slice(-499), payload]);
+    });
+    return off;
+  }, []);
 
   const start = async () => {
     setBusy(true); setMsg(null);
@@ -186,6 +199,22 @@ function RailView(): JSX.Element {
           </div>
         </div>
         {msg && <p className="meta">{msg}</p>}
+      </div>
+      <div className="card">
+        <h3>Streaming en vivo del kernel ({live.length} eventos)</h3>
+        <div className="log">
+          {live.length === 0 && <span className="meta">— sin sesión en curso; lanza un run y los eventos llegan aquí en tiempo real —</span>}
+          {[...live].slice(-25).reverse().map((n, i) => {
+            const ev = (n.params as { event?: { kind?: string; data?: Record<string, unknown> } }) ?? {};
+            return (
+              <div key={`${i}-${ev.event?.kind}`}>
+                <span className="type">{ev.event?.kind ?? n.method}</span>{" "}
+                <span className="mono">{new Date().toLocaleTimeString()}</span>{" "}
+                <span className="mono">{JSON.stringify(ev.event?.data ?? {}).slice(0, 90)}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
       <div className="card">
         <h3>Log del ledger (eventos del kernel)</h3>
@@ -268,6 +297,83 @@ function HitlView(): JSX.Element {
         </div>
       ))}
     </div>
+  );
+}
+
+// ------------------------------------------------------------------- uso
+
+function UsageView(): JSX.Element {
+  const [rows, setRows] = useState<UsageRow[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+
+  const reload = useCallback(() => {
+    kernel.usageSummary("pgk").then(setRows).catch((e: unknown) => setErr(String(e)));
+  }, []);
+  useEffect(() => { reload(); const t = setInterval(reload, 5000); return () => clearInterval(t); }, [reload]);
+
+  const totals = rows.reduce(
+    (acc, r) => ({
+      turns: acc.turns + r.turns,
+      input: acc.input + r.input_tokens,
+      output: acc.output + r.output_tokens,
+    }),
+    { turns: 0, input: 0, output: 0 },
+  );
+
+  return (
+    <div>
+      <div className="card">
+        <h3>Uso por sesión — total: {rows.length} sesiones · {totals.turns} turnos · {totals.input.toLocaleString()} in / {totals.output.toLocaleString()} out tokens</h3>
+        {err && <div className="banner err">{err}</div>}
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ color: "var(--muted)", textAlign: "left" }}>
+              <th>Cliente</th><th>Periodo</th><th>Modelo</th>
+              <th style={{ textAlign: "right" }}>Turnos</th>
+              <th style={{ textAlign: "right" }}>In</th>
+              <th style={{ textAlign: "right" }}>Out</th>
+              <th>Sesión</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.session_id} style={{ borderTop: "1px solid var(--border)" }}>
+                <td><strong>{r.client_ref}</strong></td>
+                <td className="mono">{r.period_ref}</td>
+                <td className="mono">{r.model ?? "—"}</td>
+                <td style={{ textAlign: "right" }} className="mono">{r.turns}</td>
+                <td style={{ textAlign: "right" }} className="mono">{r.input_tokens.toLocaleString()}</td>
+                <td style={{ textAlign: "right" }} className="mono">{r.output_tokens.toLocaleString()}</td>
+                <td className="mono">{r.session_id.slice(0, 8)}…</td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr><td colSpan={7} className="meta">Sin sesiones con uso registrado todavía.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="card">
+        <h3>Proxy MCP OAuth</h3>
+        <McpStatusInline />
+      </div>
+    </div>
+  );
+}
+
+function McpStatusInline(): JSX.Element {
+  const [status, setStatus] = useState<{ running: boolean; port: number; upstream: string | null } | null>(null);
+  useEffect(() => {
+    bridge?.shell.mcpStatus().then((s) => setStatus(s as { running: boolean; port: number; upstream: string | null }));
+  }, []);
+  if (!status) return <p className="meta">…</p>;
+  if (!status.running) {
+    return <p className="meta">Proxy desactivado (define SEASI_MCP_UPSTREAM + credenciales MCP_* en el Vault para activarlo). Los agentes hablarán solo con 127.0.0.1 cuando esté activo.</p>;
+  }
+  return (
+    <p className="meta">
+      <span className="status-dot on" /> Activo en <span className="mono">127.0.0.1:{status.port}</span> → <span className="mono">{status.upstream}</span>. Tokens OAuth viven solo en el proceso del proxy (vault), jamás en prompts ni en la UI.
+    </p>
   );
 }
 

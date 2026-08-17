@@ -68,12 +68,20 @@ elige el usuario. Nada sale de la máquina automáticamente.
 
 ## Fase COMERCIAL (gate explícito — NO cruzado aún)
 
-Checklist bloqueante antes de CUALQUIER inquilino externo:
+**El gate es ejecutable**: `npm run gate:commercial` (salida PASS/FAIL, exit≠0 si falta algo).
+
+Estado actual de este repo (fase interna): 3 FAIL — exactamente los tres requisitos de pago:
 
 - [ ] Apple Developer Program (99 €/año): Developer ID + notarización stapled
 - [ ] Firma Windows: Azure Trusted Signing (~10 €/mes)
-- [ ] CI matrix mac-arm64 + win-x64: lint → tests → build → firma → notariza → publica por canal
-- [ ] Canales por inquilino con entitlement firmado (rechazo de paquetes cruzados)
-- [ ] electron-builder con DMG firmado + instalador Windows firmado
+- [ ] (implícito en los dos anteriores) credenciales en el entorno
 
-Mientras esto esté sin cruzar: **ninguna instalación fuera de PGK**.
+Ya listos y verdes sin coste:
+
+- [x] CI matrix macos-latest + windows-latest (`.github/workflows/ci.yml`)
+- [x] electron-builder.yml (mac dmg arm64 + win nsis x64, hardenedRuntime, entitlements)
+- [x] Claves ed25519 de canal (`keys/`, privada fuera del repo)
+- [x] Entitlements firmados por inquilino con **rechazo cross-tenant** (`domains/entitlement` + tests de forja/expiración/cruce)
+- [x] Superficie IPC auditada en CI
+
+Mientras el gate no esté todo en verde: **ninguna instalación fuera de PGK**.

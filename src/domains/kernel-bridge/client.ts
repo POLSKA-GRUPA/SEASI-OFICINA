@@ -112,6 +112,27 @@ export class KernelClient {
     });
   }
 
+  async usageSummary(tenantId: string): Promise<UsageRow[]> {
+    const raw = await this.call("seasi.usage.summary", { tenant_id: tenantId }, null);
+    const obj = raw as { sessions?: unknown };
+    const rows = Array.isArray(obj.sessions) ? obj.sessions : [];
+    return rows.map((r) => {
+      const row = r as Record<string, unknown>;
+      if (typeof row.session_id !== "string") {
+        throw new KernelError(-32603, "usage.summary: missing session_id");
+      }
+      return {
+        session_id: row.session_id,
+        client_ref: typeof row.client_ref === "string" ? row.client_ref : "?",
+        period_ref: typeof row.period_ref === "string" ? row.period_ref : "?",
+        model: typeof row.model === "string" ? row.model : null,
+        turns: Number(row.turns ?? 0),
+        input_tokens: Number(row.input_tokens ?? 0),
+        output_tokens: Number(row.output_tokens ?? 0),
+      };
+    });
+  }
+
   private async call<T>(
     method: string,
     params: Record<string, unknown>,
@@ -139,6 +160,15 @@ export class KernelClient {
 // Structural aliases (avoid exporting raw zod-inferred types at every call site)
 export type AgentSessionLike = ReturnType<typeof AgentSessionSchema.parse>;
 export type HitlPauseLike = ReturnType<typeof HitlPauseSchema.parse>;
+export type UsageRow = {
+  session_id: string;
+  client_ref: string;
+  period_ref: string;
+  model: string | null;
+  turns: number;
+  input_tokens: number;
+  output_tokens: number;
+};
 export type LedgerEventLike = {
   seq: number;
   event_id: string;

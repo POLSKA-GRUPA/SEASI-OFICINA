@@ -25,6 +25,14 @@ const shell = {
     ipcRenderer.invoke("shell:backup:verify", id),
   updateCheck: (): Promise<unknown> => ipcRenderer.invoke("shell:update:check"),
   branding: (): Promise<unknown> => ipcRenderer.invoke("shell:branding:get"),
+  mcpStatus: (): Promise<unknown> => ipcRenderer.invoke("shell:mcp:status"),
+  onSessionEvent: (cb: (payload: { method: string; params: unknown }) => void): (() => void) => {
+    const listener = (_e: unknown, payload: { method: string; params: unknown }): void => cb(payload);
+    ipcRenderer.on("shell:session:event", listener as never);
+    return () => {
+      ipcRenderer.removeListener("shell:session:event", listener as never);
+    };
+  },
   diagnosticsExport: (): Promise<{ exported: boolean; path: string }> =>
     ipcRenderer.invoke("shell:diagnostics:export"),
 };

@@ -46,13 +46,13 @@ Requisitos: Node 22+, `uv` con SEASI-CORE al lado (`~/SEASI-CORE`).
 
 ## Estado v0.1.0
 
-- [x] Kernel channel + 6 métodos RPC (más `seasi.hitl.create` en kernel)
-- [x] Rail de despacho (sesiones por cliente desde el ledger), log vivo
+- [x] Kernel channel + 7 métodos RPC (hitl.create/list/decide, usage.summary, streaming por notificaciones)
+- [x] Rail de despacho + **streaming en vivo** (notificaciones `seasi.session.event` broadcast a la UI)
 - [x] Cola HITL: crear/listar/aprobar/rechazar con intents sellados
 - [x] Brain: grafo SVG + board + edición de notas
-- [x] Vault (safeStorage + env overlay al kernel)
+- [x] Vault (safeStorage + env overlay al kernel + credenciales MCP_*)
 - [x] Backups con ancla + verificación; diagnóstico local; update check firmado
 - [x] White-label: tenant.json aplicado a UI (nombre/colores)
-- [ ] Proxy local MCP para OAuth (task 3.7 — pendiente)
-- [ ] Dashboard de uso por modelo (task 3.10 — parcial: badge kernel)
-- [ ] Log de terminal PTY en vivo (llega con streaming del adaptador pi)
+- [x] Proxy local MCP OAuth (loopback, refresh con skew, fail-closed)
+- [x] Dashboard de uso (turnos + tokens por sesión) + estado del proxy
+- [x] Gate comercial scriptable (`npm run gate:commercial`) + entitlements con rechazo cross-tenant

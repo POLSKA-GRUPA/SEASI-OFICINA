@@ -1,0 +1,33 @@
+appId: com.seasi.despacho
+productName: SEASI Despacho
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+mac:
+  category: public.app-category.business
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  # Fase comercial: identidad + hardenedRuntime + entitlements + notarización
+  # identity: null mientras dure la fase interna (builds ad-hoc para PGK)
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+dmg:
+  title: "SEASI Despacho ${version}"
+  artifactName: "SEASI-Despacho-${version}-arm64.dmg"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # Fase comercial: azureSigningOptions (Trusted Signing)
+nsis:
+  oneClick: false
+  perMachine: false
+  artifactName: "SEASI-Despacho-Setup-${version}-x64.exe"
+publish: null

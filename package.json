@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "audit:ipc": "node scripts/audit-ipc.mjs",
+    "gate:commercial": "node scripts/commercial-gate.mjs",
     "contracts": "node scripts/gen-contracts.mjs",
     "contracts:check": "node scripts/gen-contracts.mjs --check"
   },

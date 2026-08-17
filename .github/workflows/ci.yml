@@ -1,13 +1,13 @@
 name: ci
 
-on:
-  push:
-    branches: [main]
-  pull_request:
+on: [push]
 
 jobs:
-  contracts-and-quality:
-    runs-on: macos-latest
+  quality:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,3 +30,4 @@ jobs:
         env:
           SEASI_SCHEMAS_DIR: ${{ github.workspace }}/SEASI-CORE/schemas/v1
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        shell: bash

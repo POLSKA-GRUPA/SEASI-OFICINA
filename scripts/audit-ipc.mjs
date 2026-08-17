@@ -23,8 +23,12 @@ const EXPECTED_SHELL = [
   "backupVerify",
   "updateCheck",
   "branding",
+  "mcpStatus",
+  "onSessionEvent",
   "diagnosticsExport",
 ];
+
+const EXPECTED_EVENT_CHANNELS = ["shell:session:event"];
 
 const EXPECTED_CHANNELS = [
   "seasi:rpc",
@@ -39,6 +43,7 @@ const EXPECTED_CHANNELS = [
   "shell:backup:verify",
   "shell:update:check",
   "shell:branding:get",
+  "shell:mcp:status",
   "shell:diagnostics:export",
 ];
 
@@ -63,9 +68,17 @@ if (!preload.includes("exposeInMainWorld(\"seasi\"")) {
   problems.push("preload debe exponer exactamente el objeto 'seasi'");
 }
 
+// preload may only SUBSCRIBE to the audited event channels
+const subscribed = [...preload.matchAll(/ipcRenderer\.on\(\s*"([^"]+)"/g)].map((m) => m[1]);
+const badEvents = subscribed.filter((ch) => !EXPECTED_EVENT_CHANNELS.includes(ch));
+if (badEvents.length > 0) problems.push(`eventos IPC no auditados en preload: ${badEvents.join(", ")}`);
+for (const ch of EXPECTED_EVENT_CHANNELS) {
+  if (!preload.includes(`"${ch}"`)) problems.push(`preload perdió el evento ${ch}`);
+}
+
 if (problems.length > 0) {
   console.error("AUDIT-IPC FALLÓ:");
   for (const p of problems) console.error(`  - ${p}`);
   process.exit(1);
 }
-console.log(`OK: superficie IPC auditada (${EXPECTED_CHANNELS.length} canales, ${EXPECTED_SHELL.length} métodos shell)`);
+console.log(`OK: superficie IPC auditada (${EXPECTED_CHANNELS.length} canales, ${EXPECTED_EVENT_CHANNELS.length} eventos, ${EXPECTED_SHELL.length} métodos shell)`);
