@@ -1,0 +1,361 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  /* SEASI Despacho — mockup v4: mono + violeta. Estructura Granular-grade, colores NUESTROS. */
+  :root {
+    --bg: #0c0c0e;
+    --dock: #101013;
+    --panel: #131316;
+    --panel-2: #17171b;
+    --panel-3: #1d1d22;
+    --line: #1e1e24;
+    --line-2: #2a2a32;
+    --text: #ececf1;
+    --text-2: #9b9ba4;
+    --text-3: #5a5a63;
+    --v: #8b5cf6;
+    --v-dim: rgba(139,92,246,.13);
+    --v-line: rgba(139,92,246,.45);
+    --v-glow: rgba(139,92,246,.55);
+    --ok: #3ecf8e;
+    --warn: #e0b45c;
+    --danger: #e5606c;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+    --sans: -apple-system, "SF Pro Text", Inter, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: 13px;
+    -webkit-font-smoothing: antialiased; letter-spacing: -.005em;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 54px 236px 1fr 288px;
+    grid-template-rows: 46px 1fr 30px;
+    height: 100vh;
+  }
+
+  /* ── topbar ── */
+  .topbar {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 12px;
+    padding: 0 14px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 12.5px; }
+  .brand span { color: var(--text-2); font-weight: 500; }
+  .crumb { color: var(--text-3); font-size: 12px; }
+  .crumb b { color: var(--text-2); font-weight: 550; }
+  .path { font-family: var(--mono); font-size: 10.5px; color: var(--text-3); background: var(--panel-2); border: 1px solid var(--line); padding: 2px 8px; border-radius: 5px; }
+  .topbar .grow { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--text-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 9px; background: var(--panel-2); font-variant-numeric: tabular-nums; }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); }
+  .dot.v { background: var(--v); box-shadow: 0 0 7px var(--v-glow); }
+
+  /* ── dock ── */
+  .dock {
+    background: var(--dock); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 4px;
+  }
+  .dk {
+    width: 34px; height: 34px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; color: var(--text-3); border: 1px solid transparent;
+  }
+  .dk:hover { background: var(--panel-2); color: var(--text-2); }
+  .dk.on { background: var(--panel-2); color: var(--text); border-color: var(--line-2); box-shadow: inset 0 0 0 1px var(--v-line); }
+  .dk-sep { width: 22px; height: 1px; background: var(--line-2); margin: 6px 0; }
+
+  /* ── agents panel ── */
+  .agents {
+    background: var(--panel); border-right: 1px solid var(--line);
+    padding: 12px 10px; overflow-y: auto;
+  }
+  .label { font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); padding: 6px 8px; display: flex; align-items: center; }
+  .label .kbd { margin-left: auto; font-family: var(--mono); font-size: 8.5px; color: var(--text-3); }
+  .agent {
+    display: flex; align-items: center; gap: 9px; padding: 7px 8px;
+    border-radius: 8px; border: 1px solid transparent; margin-bottom: 1px;
+  }
+  .agent:hover { background: var(--panel-2); }
+  .agent.on { background: var(--panel-2); border-color: var(--line-2); }
+  .avatar {
+    width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; background: var(--panel-3); border: 1px solid var(--line-2);
+  }
+  .agent .nm { font-size: 12px; color: var(--text-2); line-height: 1.25; }
+  .agent.on .nm { color: var(--text); }
+  .agent .rl { font-size: 9.5px; color: var(--text-3); }
+  .agent .st { margin-left: auto; width: 6px; height: 6px; border-radius: 50%; }
+  .st.run { background: var(--v); box-shadow: 0 0 8px var(--v-glow); animation: pulse 1.6s ease-in-out infinite; }
+  .st.idle { background: var(--text-3); }
+  .st.done { background: var(--ok); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  .kbd-tag { font-family: var(--mono); font-size: 8.5px; color: var(--text-3); margin-left: auto; }
+
+  .client { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 7px; font-size: 12px; color: var(--text-2); }
+  .client:hover { background: var(--panel-2); }
+  .client.sel { background: var(--panel-2); color: var(--text); box-shadow: inset 2px 0 0 var(--v); }
+  .client .nif { margin-left: auto; font-family: var(--mono); font-size: 9px; color: var(--text-3); }
+
+  /* ── chat center ── */
+  .center { display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
+  .ctabs { display: flex; gap: 2px; padding: 8px 14px 0; border-bottom: 1px solid var(--line); }
+  .ct { padding: 6px 12px 8px; font-size: 12px; color: var(--text-3); border-bottom: 2px solid transparent; border-radius: 7px 7px 0 0; }
+  .ct.on { color: var(--text); border-bottom-color: var(--v); background: var(--panel); }
+
+  .feed { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+
+  .msg { display: flex; gap: 10px; }
+  .msg .who { width: 24px; height: 24px; border-radius: 7px; background: var(--panel-3); border: 1px solid var(--line-2); display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+  .msg .body { flex: 1; min-width: 0; }
+  .msg .meta-ln { font-size: 10.5px; color: var(--text-3); margin-bottom: 3px; }
+  .msg .meta-ln b { color: var(--text-2); font-weight: 600; }
+  .msg .txt { color: var(--text-2); font-size: 12.5px; line-height: 1.6; }
+
+  .acard {
+    display: flex; align-items: center; gap: 9px;
+    background: var(--panel); border: 1px solid var(--line-2);
+    border-radius: 9px; padding: 8px 11px; margin: 2px 0 2px 34px;
+  }
+  .acard .ic { width: 22px; height: 22px; border-radius: 6px; background: var(--panel-3); border: 1px solid var(--line-2); display: flex; align-items: center; justify-content: center; font-size: 11px; }
+  .acard .act { font-family: var(--mono); font-size: 11px; color: var(--text); }
+  .acard .res { font-size: 11px; color: var(--text-3); margin-left: 2px; }
+  .acard .ck { margin-left: auto; color: var(--ok); font-size: 11px; }
+  .acard.warn { border-left: 2px solid var(--warn); }
+  .acard.warn .ck { color: var(--warn); }
+  .acard .t { font-family: var(--mono); font-size: 9.5px; color: var(--text-3); margin-left: 8px; }
+
+  .thinking { display: flex; align-items: center; gap: 8px; margin-left: 34px; color: var(--text-3); font-size: 11.5px; }
+  .thinking .orb { width: 8px; height: 8px; border-radius: 50%; background: var(--v); box-shadow: 0 0 12px var(--v-glow); animation: pulse 1.4s ease-in-out infinite; }
+
+  /* ── input ── */
+  .composer { padding: 10px 14px 12px; border-top: 1px solid var(--line); background: var(--bg); }
+  .ctx-dots { display: flex; align-items: center; gap: 5px; padding: 0 4px 8px; }
+  .ctx-dots .d { width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); }
+  .ctx-dots .d.on { background: var(--v); box-shadow: 0 0 6px var(--v-glow); }
+  .ctx-dots .tks { margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: var(--text-3); }
+  .inbox {
+    background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 12px;
+  }
+  .inbox .ph { color: var(--text-3); font-size: 12.5px; padding: 2px 0 10px; }
+  .inbox .row { display: flex; align-items: center; gap: 6px; }
+  .bpill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10.5px; color: var(--text-2);
+    background: var(--panel-2); border: 1px solid var(--line-2);
+    border-radius: 999px; padding: 3px 10px;
+  }
+  .bpill.model { color: var(--text); border-color: var(--v-line); background: var(--v-dim); }
+  .bpill .chev { color: var(--text-3); font-size: 8px; }
+  .send {
+    margin-left: auto; background: var(--v); color: #fff;
+    border-radius: 8px; padding: 6px 14px; font-size: 11.5px; font-weight: 650;
+    box-shadow: 0 0 16px var(--v-glow);
+  }
+
+  /* ── right: HITL + preview ── */
+  .right { display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); min-height: 0; }
+  .rsec { border-bottom: 1px solid var(--line); }
+  .rsec .hd { padding: 10px 12px 8px; display: flex; align-items: center; }
+  .rsec .hd .label { padding: 0; }
+  .rsec .hd .cnt { margin-left: auto; font-family: var(--mono); font-size: 9px; background: var(--v); color: #fff; border-radius: 999px; padding: 1px 7px; }
+  .hitl { margin: 0 10px 10px; border: 1px solid var(--line-2); border-left: 2px solid var(--warn); border-radius: 9px; background: var(--panel-2); padding: 10px 11px; }
+  .hitl .cap { font-family: var(--mono); font-size: 10.5px; font-weight: 600; }
+  .hitl .sub { font-size: 10px; color: var(--text-3); margin: 2px 0 7px; }
+  .hitl .dg { font-family: var(--mono); font-size: 8.5px; color: var(--text-3); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 4px 7px; margin-bottom: 8px; word-break: break-all; line-height: 1.5; }
+  .hitl .btns { display: flex; gap: 6px; }
+  .b-ok { flex: 1; text-align: center; font-size: 10.5px; font-weight: 650; padding: 5px 0; border-radius: 7px; background: var(--v); color: #fff; }
+  .b-no { flex: 1; text-align: center; font-size: 10.5px; padding: 5px 0; border-radius: 7px; border: 1px solid var(--line-2); color: var(--text-2); }
+
+  .prev { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .prev-bar { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  .prev-bar .ic { font-size: 11px; color: var(--text-3); }
+  .prev-bar .url {
+    flex: 1; font-family: var(--mono); font-size: 10px; color: var(--text-2);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px;
+  }
+  .prev-body { flex: 1; margin: 10px; border: 1px solid var(--line-2); border-radius: 9px; background: #fff; padding: 14px; overflow: hidden; }
+  .doc-t { font-family: -apple-system, sans-serif; color: #111; font-size: 13px; font-weight: 700; }
+  .doc-s { color: #555; font-size: 10px; margin: 3px 0 10px; }
+  .doc-r { display: flex; justify-content: space-between; color: #333; font-size: 10.5px; padding: 5px 0; border-bottom: 1px solid #e8e8e8; font-family: var(--mono); }
+  .doc-r b { color: #111; }
+
+  /* ── status bar ── */
+  .status {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 16px;
+    padding: 0 12px; background: var(--panel); border-top: 1px solid var(--line);
+    font-family: var(--mono); font-size: 9.5px; color: var(--text-3);
+  }
+  .status .v { color: var(--text-2); }
+  .status .grow { flex: 1; }
+  .status .lv { color: var(--v); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <svg width="18" height="18" viewBox="0 0 512 512"><rect width="512" height="512" rx="120" fill="#17171b"/><path d="M256 86 L398 168 L398 344 L256 426 L114 344 L114 168 Z" fill="none" stroke="#8b5cf6" stroke-width="24" stroke-linejoin="round"/><circle cx="256" cy="180" r="30" fill="#8b5cf6"/><circle cx="256" cy="340" r="26" fill="#1d1d22" stroke="#8b5cf6" stroke-width="12"/></svg>
+    SEASI <span>Despacho</span>
+  </div>
+  <div class="crumb"><b>Hermanos López S.L.</b> › Mod. 303 · 2026T3</div>
+  <div class="path">~/SEASI/workspace/pgk/B82211806</div>
+  <div class="grow"></div>
+  <span class="pill"><span class="dot"></span>kernel 0.2.3</span>
+  <span class="pill"><span class="dot v"></span>ledger ✓</span>
+</div>
+
+<div class="dock">
+  <div class="dk on">◧</div>
+  <div class="dk">⏸</div>
+  <div class="dk">◈</div>
+  <div class="dk">▤</div>
+  <div class="dk-sep"></div>
+  <div class="dk">⚙</div>
+</div>
+
+<div class="agents">
+  <div class="label">Agentes <span class="kbd">⌘1-4</span></div>
+  <div class="agent on">
+    <div class="avatar">🐉</div>
+    <div><div class="nm">Gran Dragón</div><div class="rl">fiscal AEAT · 303/130</div></div>
+    <div class="st run"></div>
+  </div>
+  <div class="agent">
+    <div class="avatar">✦</div>
+    <div><div class="nm">Cecilia</div><div class="rl">router · coordinación</div></div>
+    <div class="st idle"></div>
+  </div>
+  <div class="agent">
+    <div class="avatar">▤</div>
+    <div><div class="nm">Edu</div><div class="rl">contabilidad · asientos</div></div>
+    <div class="st done"></div>
+  </div>
+  <div class="agent">
+    <div class="avatar">▥</div>
+    <div><div class="nm">Paloma</div><div class="rl">documental · archivos</div></div>
+    <div class="st idle"></div>
+  </div>
+
+  <div class="label" style="margin-top:10px">Clientes</div>
+  <div class="client sel">Hermanos López <span class="nif">B82211806</span></div>
+  <div class="client">Sikora S.L. <span class="nif">B42970335</span></div>
+  <div class="client">K. Nowak <span class="nif">04660003L</span></div>
+</div>
+
+<div class="center">
+  <div class="ctabs">
+    <div class="ct on">Chat</div>
+    <div class="ct">Terminal</div>
+    <div class="ct">Eventos</div>
+  </div>
+
+  <div class="feed">
+    <div class="msg">
+      <div class="who">👤</div>
+      <div class="body">
+        <div class="meta-ln"><b>Tú</b> · 16:41</div>
+        <div class="txt">Cierra el 303 del T3 de Hermanos López y prepáralo para presentar</div>
+      </div>
+    </div>
+
+    <div class="msg">
+      <div class="who">🐉</div>
+      <div class="body">
+        <div class="meta-ln"><b>Gran Dragón</b> · fiscal · 16:41</div>
+        <div class="acard">
+          <div class="ic">📄</div>
+          <div class="act">leer-facturas 2026T3</div>
+          <div class="res">42 PDFs · Drive</div>
+          <div class="t">2.1s</div>
+          <div class="ck">✓</div>
+        </div>
+        <div class="acard">
+          <div class="ic">🧮</div>
+          <div class="act">clasificar NAC/INT/ISP</div>
+          <div class="res">40 · 1 · 1</div>
+          <div class="t">6.4s</div>
+          <div class="ck">✓</div>
+        </div>
+        <div class="acard">
+          <div class="ic">∑</div>
+          <div class="act">calcular-modelo 303</div>
+          <div class="res">3.872,84 €</div>
+          <div class="t">0.8s</div>
+          <div class="ck">✓</div>
+        </div>
+        <div class="acard warn">
+          <div class="ic">⏸</div>
+          <div class="act">presentar 303 → HITL</div>
+          <div class="res">filing.submit · esperando</div>
+          <div class="ck">⏳</div>
+        </div>
+        <div class="txt" style="margin-top:8px">Modelo 303 T3 listo: base 18.442,10 € · cuota 3.872,84 € (aritmética exacta al céntimo). La presentación quedó <b style="color:var(--text)">pausada para tu aprobación</b> → panel derecho.</div>
+      </div>
+    </div>
+
+    <div class="thinking"><div class="orb"></div>Gran Dragón redactando email al cliente con el resumen…</div>
+  </div>
+
+  <div class="composer">
+    <div class="ctx-dots">
+      <div class="d on"></div><div class="d on"></div><div class="d on"></div><div class="d on"></div><div class="d on"></div><div class="d"></div><div class="d"></div><div class="d"></div><div class="d"></div><div class="d"></div>
+      <span class="tks">ctx 52% · 12.4k/24k tokens</span>
+    </div>
+    <div class="inbox">
+      <div class="ph">Pide lo que quieras — HITL protege toda presentación a AEAT</div>
+      <div class="row">
+        <span class="bpill model">groq/gpt-oss-20b <span class="chev">▼</span></span>
+        <span class="bpill">Tools 6</span>
+        <span class="bpill">Auto ⏸ HITL</span>
+        <span class="bpill">budget 12/64</span>
+        <span class="send">Enviar ↵</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="right">
+  <div class="rsec">
+    <div class="hd"><div class="label">Aprobaciones</div><div class="cnt">1</div></div>
+    <div class="hitl">
+      <div class="cap">filing.submit · Mod. 303</div>
+      <div class="sub">Hermanos López · 2026T3 · 3.872,84 €</div>
+      <div class="dg">sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</div>
+      <div class="btns"><div class="b-ok">Aprobar</div><div class="b-no">Rechazar</div></div>
+    </div>
+  </div>
+
+  <div class="prev">
+    <div class="prev-bar">
+      <span class="ic">⟲</span>
+      <div class="url">artifact://modelo303_2026T3.pdf</div>
+      <span class="ic">📷</span>
+      <span class="ic">⛶</span>
+    </div>
+    <div class="prev-body">
+      <div class="doc-t">Modelo 303 — Autoliquidación IVA</div>
+      <div class="doc-s">Hermanos López S.L. · B82211806 · 3T 2026</div>
+      <div class="doc-r"><span>Base imponible</span><b>18.442,10 €</b></div>
+      <div class="doc-r"><span>Cuota devengada 21%</span><b>3.872,84 €</b></div>
+      <div class="doc-r"><span>Cuotas soportadas</span><b>−1.203,55 €</b></div>
+      <div class="doc-r"><span>A deducir períodos anteriores</span><b>0,00 €</b></div>
+      <div class="doc-r"><span><b>RESULTADO</b></span><b style="color:#7c3aed">2.669,29 €</b></div>
+    </div>
+  </div>
+</div>
+
+<div class="status">
+  <span>sesión <span class="v">4fe7f6a9</span></span>
+  <span>turnos <span class="v">12/64</span></span>
+  <span>tokens <span class="v">12.4k</span></span>
+  <span>ledger <span class="v">128 evts · chain ✓</span></span>
+  <div class="grow"></div>
+  <span>local-first · sin telemetría · PGK cliente cero</span>
+</div>
+
+</body>
+</html>
