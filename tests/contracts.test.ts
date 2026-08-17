@@ -15,8 +15,9 @@ import {
 } from "../src/contracts/gen/schemas";
 
 const sha256 = (t: string) => createHash("sha256").update(t, "utf8").digest("hex");
+const hereDir = new URL(".", import.meta.url).pathname;
 const schemasDir = resolve(
-  __dirname,
+  hereDir,
   process.env.SEASI_SCHEMAS_DIR ?? "../../SEASI-CORE/schemas/v1",
 );
 
