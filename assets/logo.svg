@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="SEASI Despacho">
+  <!-- SEASI: hexágono (despacho/gobierno) + grafo de nodos (brain/agentes) -->
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f6feb"/>
+      <stop offset="1" stop-color="#3d8bfd"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="#0d1117"/>
+
+  <!-- hexágono exterior -->
+  <path d="M256 76 L404 162 L404 350 L256 436 L108 350 L108 162 Z"
+        fill="none" stroke="url(#ring)" stroke-width="18" stroke-linejoin="round"/>
+
+  <!-- enlaces del grafo interior -->
+  <g stroke="#8b949e" stroke-width="10" stroke-linecap="round">
+    <line x1="256" y1="160" x2="196" y2="300"/>
+    <line x1="256" y1="160" x2="316" y2="300"/>
+    <line x1="196" y1="300" x2="256" y2="356"/>
+    <line x1="316" y1="300" x2="256" y2="356"/>
+    <line x1="196" y1="300" x2="316" y2="300"/>
+  </g>
+
+  <!-- nodos -->
+  <circle cx="256" cy="160" r="30" fill="#1f6feb"/>
+  <circle cx="196" cy="300" r="24" fill="#30363d" stroke="#8b949e" stroke-width="8"/>
+  <circle cx="316" cy="300" r="24" fill="#30363d" stroke="#8b949e" stroke-width="8"/>
+  <circle cx="256" cy="356" r="34" fill="#f0b429"/>
+</svg>

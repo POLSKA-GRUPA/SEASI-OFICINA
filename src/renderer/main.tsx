@@ -32,6 +32,28 @@ const kernel = new KernelClient((m, p) => {
   return bridge.call(m, p);
 });
 
+function BrandMark({ size = 22 }: { size?: number }): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden>
+      <rect width="512" height="512" rx="112" fill="#17181b" />
+      <path d="M256 76 L404 162 L404 350 L256 436 L108 350 L108 162 Z" fill="none"
+        stroke="url(#brand-g)" strokeWidth="26" strokeLinejoin="round" />
+      <defs>
+        <linearGradient id="brand-g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="var(--brand-primary)" />
+          <stop offset="1" stopColor="var(--brand-accent)" />
+        </linearGradient>
+      </defs>
+      <g stroke="#74767c" strokeWidth="14" strokeLinecap="round">
+        <line x1="256" y1="170" x2="200" y2="300" /><line x1="256" y1="170" x2="312" y2="300" />
+        <line x1="200" y1="300" x2="256" y2="350" /><line x1="312" y1="300" x2="256" y2="350" />
+      </g>
+      <circle cx="256" cy="170" r="34" fill="var(--brand-primary)" />
+      <circle cx="256" cy="350" r="38" fill="var(--brand-accent)" />
+    </svg>
+  );
+}
+
 type Tab = "rail" | "hitl" | "uso" | "brain" | "vault" | "sistema";
 
 export function App(): JSX.Element {
@@ -62,11 +84,14 @@ export function App(): JSX.Element {
       </aside>
       <main className="content">
         <header className="topbar">
-          <h1>{brandName} · Despacho</h1>
-          <span className="badge">{kernelVersion ? `kernel ${kernelVersion}` : "kernel…"}</span>
-          <span className="badge">shell v{bridge?.version ?? "?"}</span>
+          <div className="brand">
+            <BrandMark />
+            <span className="word">{brandName.split(" — ")[0]} <em>Despacho</em></span>
+          </div>
+          <span className="pill"><span className={`dot ${kernelVersion ? "" : "off"}`} />{kernelVersion ? `kernel ${kernelVersion}` : "kernel…"}</span>
+          <span className="pill">shell v{bridge?.version ?? "?"}</span>
           <div className="spacer" />
-          <span className="badge mono">tenant {tenant?.tenant_id ?? "…"}</span>
+          <span className="pill">{tenant?.tenant_id ?? "…"}</span>
         </header>
         <nav className="tabs">
           {(["rail", "hitl", "uso", "brain", "vault", "sistema"] as Tab[]).map((t) => (
@@ -125,19 +150,19 @@ function RailPanel(): JSX.Element {
 
   return (
     <div className="client-list">
-      <h3 style={{ fontSize: 13, color: "var(--muted)" }}>CLIENTES / SESIONES</h3>
-      {grouped.length === 0 && <p className="meta">Sin sesiones todavía. Crea una en Despacho.</p>}
+      <h3>Clientes / Sesiones</h3>
+      {grouped.length === 0 && <div className="empty">Sin sesiones todavía.<br />Crea la primera en la pestaña Despacho.</div>}
       {grouped.map(([client, rows]) => (
         <div key={client}>
           <div className="client" onClick={() => setSelected(client)}>
             <strong>{client}</strong>
-            <span className="nif">{rows.length} sesión(es)</span>
+            <span className="nif">{rows.length} ses.</span>
           </div>
           {selected === client &&
             rows.map((r) => (
               <div key={String(r.session_id)} className="client" style={{ paddingLeft: 22 }}>
                 <span className="mono">{r.period_ref}</span>
-                <span className="nif">{r.state}</span>
+                <span className={`chip state-${r.state}`}>{String(r.state).replace("_", " ")}</span>
               </div>
             ))}
         </div>
@@ -184,8 +209,8 @@ function RailView(): JSX.Element {
   return (
     <div>
       <div className="card">
-        <h3>Nueva sesión de despacho</h3>
-        <div style={{ display: "flex", gap: 10 }}>
+        <p className="kicker">Nueva sesión</p>
+        <div className="row">
           <div className="field" style={{ flex: 2 }}>
             <label>Cliente (NIF/CIF)</label>
             <input value={clientRef} onChange={(e) => setClientRef(e.target.value)} placeholder="B82211806" />
@@ -194,30 +219,30 @@ function RailView(): JSX.Element {
             <label>Periodo</label>
             <input value={period} onChange={(e) => setPeriod(e.target.value)} placeholder="2026T3" />
           </div>
-          <div style={{ alignSelf: "flex-end" }}>
+          <div style={{ alignSelf: "flex-end", paddingBottom: 12 }}>
             <button className="primary" disabled={busy} onClick={() => void start()}>Crear sesión</button>
           </div>
         </div>
         {msg && <p className="meta">{msg}</p>}
       </div>
       <div className="card">
-        <h3>Streaming en vivo del kernel ({live.length} eventos)</h3>
+        <p className="kicker">Streaming en vivo</p>
         <div className="log">
-          {live.length === 0 && <span className="meta">— sin sesión en curso; lanza un run y los eventos llegan aquí en tiempo real —</span>}
+          {live.length === 0 && <span>— sin sesión en curso; lanza un run y los eventos llegan aquí en tiempo real —</span>}
           {[...live].slice(-25).reverse().map((n, i) => {
             const ev = (n.params as { event?: { kind?: string; data?: Record<string, unknown> } }) ?? {};
             return (
               <div key={`${i}-${ev.event?.kind}`}>
-                <span className="type">{ev.event?.kind ?? n.method}</span>{" "}
-                <span className="mono">{new Date().toLocaleTimeString()}</span>{" "}
-                <span className="mono">{JSON.stringify(ev.event?.data ?? {}).slice(0, 90)}</span>
+                <span className={`type kind-${ev.event?.kind ?? ""}`}>{ev.event?.kind ?? n.method}</span>{"  "}
+                <span>{new Date().toLocaleTimeString()}</span>{"  "}
+                <span>{JSON.stringify(ev.event?.data ?? {}).slice(0, 90)}</span>
               </div>
             );
           })}
         </div>
       </div>
       <div className="card">
-        <h3>Log del ledger (eventos del kernel)</h3>
+        <p className="kicker">Ledger del kernel</p>
         <div className="log">
           {log.length === 0 && <span className="meta">— vacío —</span>}
           {[...log].reverse().map((e) => (
@@ -287,9 +312,12 @@ function HitlView(): JSX.Element {
       {pending.length === 0 && <div className="card"><p className="meta">Sin pausas pendientes.</p></div>}
       {pending.map((p) => (
         <div key={String(p.pause_id)} className="card pause">
-          <h3 className="mono">{p.capability_id}</h3>
+          <p className="kicker">Efecto gated</p>
+          <h3 className="mono" style={{ fontSize: 14 }}>{p.capability_id}</h3>
           <span className="meta">sesión {String(p.session_id).slice(0, 8)} · expira {new Date(p.expires_at).toLocaleTimeString()}</span>
-          <div className="digest mono">digest {p.payload_digest}</div>
+          <div className="digest mono" style={{ margin: "10px 0" }}>
+            <b>digest</b> {p.payload_digest}
+          </div>
           <div className="actions">
             <button className="ok" onClick={() => void decide(p, "approved")}>Aprobar</button>
             <button className="danger" onClick={() => void decide(p, "rejected")}>Rechazar</button>
@@ -325,25 +353,25 @@ function UsageView(): JSX.Element {
       <div className="card">
         <h3>Uso por sesión — total: {rows.length} sesiones · {totals.turns} turnos · {totals.input.toLocaleString()} in / {totals.output.toLocaleString()} out tokens</h3>
         {err && <div className="banner err">{err}</div>}
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <table style={{ width: "100%" }}>
           <thead>
-            <tr style={{ color: "var(--muted)", textAlign: "left" }}>
+            <tr>
               <th>Cliente</th><th>Periodo</th><th>Modelo</th>
-              <th style={{ textAlign: "right" }}>Turnos</th>
-              <th style={{ textAlign: "right" }}>In</th>
-              <th style={{ textAlign: "right" }}>Out</th>
+              <th className="num">Turnos</th>
+              <th className="num">Tokens in</th>
+              <th className="num">Tokens out</th>
               <th>Sesión</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.session_id} style={{ borderTop: "1px solid var(--border)" }}>
+              <tr key={r.session_id}>
                 <td><strong>{r.client_ref}</strong></td>
                 <td className="mono">{r.period_ref}</td>
                 <td className="mono">{r.model ?? "—"}</td>
-                <td style={{ textAlign: "right" }} className="mono">{r.turns}</td>
-                <td style={{ textAlign: "right" }} className="mono">{r.input_tokens.toLocaleString()}</td>
-                <td style={{ textAlign: "right" }} className="mono">{r.output_tokens.toLocaleString()}</td>
+                <td className="num mono">{r.turns}</td>
+                <td className="num mono">{r.input_tokens.toLocaleString()}</td>
+                <td className="num mono">{r.output_tokens.toLocaleString()}</td>
                 <td className="mono">{r.session_id.slice(0, 8)}…</td>
               </tr>
             ))}
@@ -456,7 +484,7 @@ function BrainView(): JSX.Element {
         <div className="board">
           {(["todo", "doing", "blocked", "done"] as const).map((col) => (
             <div className="col" key={col}>
-              <h4>{col}</h4>
+              <h4>{col}<span>{boardCards.filter((c) => c.column === col).length}</span></h4>
               {boardCards.filter((c) => c.column === col).map((c) => (
                 <div key={c.id} className={`card-mini ${c.status}`}>{c.title}</div>
               ))}

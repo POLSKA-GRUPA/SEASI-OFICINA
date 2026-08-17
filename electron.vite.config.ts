@@ -11,6 +11,10 @@ export default defineConfig({
     build: {
       outDir: "out/preload",
       lib: { entry: "src/preload/index.ts" },
+      rollupOptions: {
+        // sandbox:true exige preload CJS (.js), no ESM (.mjs)
+        output: { format: "cjs", entryFileNames: "[name].js" },
+      },
     },
   },
   renderer: {

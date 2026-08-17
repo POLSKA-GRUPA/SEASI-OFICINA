@@ -204,10 +204,12 @@ function loadTenantConfig(): TenantConfig {
 
 function createWindow(): void {
   const config = loadTenantConfig();
+  const iconPath = join(__dirname, "../../build/icon.png");
   const win = new BrowserWindow({
     width: 1440,
     height: 920,
     title: `SEASI Despacho — ${config.branding.name}`,
+    icon: existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: true,
@@ -217,6 +219,11 @@ function createWindow(): void {
     },
   });
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.on("console-message", (_e, _level, message) => {
+    if (/error|failed|uncaught/i.test(message)) {
+      console.error(`[renderer] ${message}`);
+    }
+  });
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
@@ -376,6 +383,20 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+
+  // utilidad: SEASI_SCREENSHOT=<ruta> captura la ventana tras 5s y sale (docs/smoke)
+  const shot = process.env.SEASI_SCREENSHOT;
+  if (shot) {
+    const win = BrowserWindow.getAllWindows()[0];
+    setTimeout(() => {
+      win?.webContents.capturePage().then((img) => {
+        writeFileSync(shot, img.toPNG());
+        console.error(`[screenshot] ${shot}`);
+        app.quit();
+      }).catch((e: unknown) => { console.error(`[screenshot] fallo: ${String(e)}`); app.quit(); });
+    }, 5000);
+  }
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

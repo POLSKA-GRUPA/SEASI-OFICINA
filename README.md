@@ -1,6 +1,12 @@
 # SEASI Despacho
 
+![estado](https://img.shields.io/badge/estado-INTERNO%20v0.1.1%20%E2%80%94%20no%20revendible%20a%C3%BAn-orange) ![tests](https://img.shields.io/badge/tests-69%20shell%20%E2%80%A2%20171%20kernel-brightgreen)
+
+![logo](assets/logo.svg)
+
 **Shell de escritorio local-first para el kernel [SEASI-CORE](../SEASI-CORE)** — el "despacho fiscal" de SEASI. Electron + TypeScript estricto + React. Cliente cero: PGK.
+
+> ⚠️ **Estado honesto**: v0 técnico interno. Probado a nivel kernel y dominios (240 tests), con smoke de ventana y sesión real de validación. **No apto para distribución externa** hasta cruzar `npm run gate:commercial` (ver [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)). Nada de revender todavía.
 
 > Change de origen: `SEASI-CORE/openspec/changes/sea-sic-core-v0/`. Despliegue: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 

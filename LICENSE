@@ -1,0 +1,28 @@
+SEASI DESPACHO — LICENCIA DE SOFTWARE (PROPIETARIA)
+
+Copyright (c) 2026 Kenyi Martín Alcántara / SEA-SIC. Todos los derechos reservados.
+
+1. DEFINICIÓN
+   Este software ("SEASI Despacho") es el shell de escritorio white-label de la
+   plataforma SEASI. Se distribuye bajo licencia comercial privada, por inquilino.
+
+2. QUÉ SE PUEDE HACER
+   a) Usarlo internamente en PGK (cliente cero) sin coste.
+   b) Los inquilinos con licencia activa pueden usar SU copia según los términos
+      de su entitlement firmado (tenant, canal, versión, expiración).
+   c) Los módulos SEASI-CORE conservan SU propia licencia (ver ese repositorio).
+
+3. QUÉ NO SE PUEDE HACER
+   a) Redistribuir, revender o sublicenciar sin entitlement válido firmado por
+      SEA-SIC.
+   b) Instalar un paquete de un canal/tenant en otra instalación (rechazado por
+      diseño: domains/entitlement).
+   c) Extraer credenciales del vault de otra instalación.
+
+4. SIN GARANTÍA
+   El software se proporciona "tal cual", sin garantía de ningún tipo. Fase
+   interna: no apto para distribución externa hasta que `npm run
+   gate:commercial` esté íntegramente en verde (ver docs/DEPLOYMENT.md).
+
+5. CONTACTO LICENCIAS
+   Licencias y entitlements: SEA-SIC — Kenyi Martín Alcántara.
