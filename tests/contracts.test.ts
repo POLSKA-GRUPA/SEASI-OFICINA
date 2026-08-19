@@ -24,6 +24,9 @@ import {
 } from "../src/contracts/gen/schemas";
 
 const sha256 = (t: string) => createHash("sha256").update(t, "utf8").digest("hex");
+// Digests canónicos sobre LF (un checkout Windows con autocrlf no debe
+// alterar lo que grabó el MANIFEST del kernel).
+const canon = (t: string) => t.replace(/\r\n/g, "\n");
 const hereDir = new URL(".", import.meta.url).pathname;
 const schemasDir = resolve(
   hereDir,
@@ -33,7 +36,7 @@ const schemasDir = resolve(
 describe("contract parity (kernel <-> shell)", () => {
   it("managed digests match SEASI-CORE/schemas/v1 on disk", () => {
     for (const [name, digest] of Object.entries(CONTRACT_DIGESTS)) {
-      const onDisk = sha256(readFileSync(resolve(schemasDir, name), "utf8"));
+      const onDisk = sha256(canon(readFileSync(resolve(schemasDir, name), "utf8")));
       expect(onDisk, `${name} drifted`).toBe(digest);
     }
   });
