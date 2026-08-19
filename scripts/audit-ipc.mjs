@@ -26,9 +26,13 @@ const EXPECTED_SHELL = [
   "mcpStatus",
   "onSessionEvent",
   "diagnosticsExport",
+  "oficinaState",
+  "oficinaAppend",
+  "oficinaVerify",
+  "onOficinaEvent",
 ];
 
-const EXPECTED_EVENT_CHANNELS = ["shell:session:event"];
+const EXPECTED_EVENT_CHANNELS = ["shell:session:event", "shell:oficina:event"];
 
 const EXPECTED_CHANNELS = [
   "seasi:rpc",
@@ -45,6 +49,9 @@ const EXPECTED_CHANNELS = [
   "shell:branding:get",
   "shell:mcp:status",
   "shell:diagnostics:export",
+  "shell:oficina:state",
+  "shell:oficina:append",
+  "shell:oficina:verify",
 ];
 
 const problems = [];

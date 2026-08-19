@@ -3,6 +3,7 @@ import { StrictMode, useCallback, useEffect, useMemo, useState, type JSX } from 
 import { KernelClient, KernelError, type AgentSessionLike, type HitlPauseLike, type LedgerEventLike, type UsageRow } from "../domains/kernel-bridge/client";
 import { buildGraph, extractWikilinks, parseRoadmapBoard, type BoardCard } from "../domains/brain/parser";
 import type { TenantConfig } from "../domains/branding/config";
+import type { OficinaState } from "../domains/oficina/store";
 import "./ui.css";
 
 type Bridge = {
@@ -23,6 +24,10 @@ type Bridge = {
     mcpStatus: () => Promise<unknown>;
     onSessionEvent: (cb: (payload: { method: string; params: unknown }) => void) => () => void;
     diagnosticsExport: () => Promise<{ exported: boolean; path: string }>;
+    oficinaState: () => Promise<OficinaState>;
+    oficinaAppend: (type: string, actor: string, payload: unknown) => Promise<{ ok: true; event: unknown } | { ok: false; reason: string; message: string }>;
+    oficinaVerify: () => Promise<{ ok: boolean; events: number; error?: string }>;
+    onOficinaEvent: (cb: (payload: { seq: number; type: string }) => void) => () => void;
   };
 };
 
@@ -54,10 +59,10 @@ function BrandMark({ size = 22 }: { size?: number }): JSX.Element {
   );
 }
 
-type Tab = "rail" | "hitl" | "uso" | "brain" | "vault" | "sistema";
+type Tab = "oficina" | "rail" | "hitl" | "uso" | "brain" | "vault" | "sistema";
 
 export function App(): JSX.Element {
-  const [tab, setTab] = useState<Tab>("rail");
+  const [tab, setTab] = useState<Tab>("oficina");
   const [tenant, setTenant] = useState<TenantConfig | null>(null);
   const [kernelVersion, setKernelVersion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,14 +99,15 @@ export function App(): JSX.Element {
           <span className="pill">{tenant?.tenant_id ?? "…"}</span>
         </header>
         <nav className="tabs">
-          {(["rail", "hitl", "uso", "brain", "vault", "sistema"] as Tab[]).map((t) => (
+          {(["oficina", "rail", "hitl", "uso", "brain", "vault", "sistema"] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-              {t === "rail" ? "Oficina" : t === "hitl" ? "HITL" : t === "uso" ? "Uso" : t === "vault" ? "Vault" : t === "sistema" ? "Sistema" : "Brain"}
+              {t === "oficina" ? "Oficina" : t === "rail" ? "Sesiones" : t === "hitl" ? "HITL" : t === "uso" ? "Uso" : t === "vault" ? "Vault" : t === "sistema" ? "Sistema" : "Brain"}
             </button>
           ))}
         </nav>
         <section className="view">
           {error && <div className="banner err">{error}</div>}
+          {tab === "oficina" && <OficinaView />}
           {tab === "rail" && <RailView />}
           {tab === "hitl" && <HitlView />}
           {tab === "uso" && <UsageView />}
@@ -151,7 +157,7 @@ function RailPanel(): JSX.Element {
   return (
     <div className="client-list">
       <h3>Clientes / Sesiones</h3>
-      {grouped.length === 0 && <div className="empty">Sin sesiones todavía.<br />Crea la primera en la pestaña Oficina.</div>}
+      {grouped.length === 0 && <div className="empty">Sin sesiones todavía.<br />Crea la primera en la pestaña Sesiones.</div>}
       {grouped.map(([client, rows]) => (
         <div key={client}>
           <div className="client" onClick={() => setSelected(client)}>
@@ -605,6 +611,179 @@ function SystemView(props: { onTenantLoaded: (c: TenantConfig) => void }): JSX.E
         <h3>White-label (tenant.json)</h3>
         <p className="meta">Marca, capacidades y gobierno se configuran en el archivo tenant.json del perfil. Cambia la marca y la UI la aplica al reiniciar.</p>
         <button className="ghost" onClick={() => { void bridge?.shell.branding().then((b) => props.onTenantLoaded(b as TenantConfig)); }}>Recargar branding</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- oficina
+
+const fmtTime = (iso: string): string => {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+const fmtDur = (ms: number): string => {
+  const totalMin = Math.floor(ms / 60000);
+  return `${Math.floor(totalMin / 60)}h ${String(totalMin % 60).padStart(2, "0")}m`;
+};
+
+const slug = (title: string): string =>
+  title
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || `tarea-${Date.now()}`;
+
+function OficinaView(): JSX.Element {
+  const [persona, setPersona] = useState<string>(() => localStorage.getItem("oficina.persona") ?? "kenyi");
+  const [state, setState] = useState<OficinaState | null>(null);
+  const [chain, setChain] = useState<{ ok: boolean; events: number; error?: string } | null>(null);
+  const [nota, setNota] = useState("");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskArea, setTaskArea] = useState("");
+  const [taskPrio, setTaskPrio] = useState<"low" | "normal" | "high">("normal");
+  const [err, setErr] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    bridge?.shell.oficinaState().then(setState).catch((e: unknown) => setErr(String(e)));
+    bridge?.shell.oficinaVerify().then(setChain).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    if (!bridge) return;
+    return bridge.shell.onOficinaEvent(() => refresh());
+  }, [refresh]);
+
+  useEffect(() => {
+    localStorage.setItem("oficina.persona", persona);
+  }, [persona]);
+
+  const act = async (type: string, payload: unknown): Promise<void> => {
+    setErr(null);
+    const r = await bridge?.shell.oficinaAppend(type, persona, payload);
+    if (r && !r.ok) setErr(`${r.reason}: ${r.message}`);
+    refresh();
+  };
+
+  const clock = state?.clock;
+  const tasks = state?.tasks ?? [];
+  const cols: ["todo" | "doing" | "done", string][] = [["todo", "Por hacer"], ["doing", "En curso"], ["done", "Hecho"]];
+
+  return (
+    <div className="oficina">
+      {err && <div className="banner err">{err}</div>}
+
+      <div className="card oficina-clock">
+        <div className="field" style={{ width: 160 }}>
+          <label>Persona</label>
+          <input value={persona} onChange={(e) => setPersona(e.target.value)} />
+        </div>
+        <div className="clock-time">
+          <span className={`dot ${clock?.in ? "" : "off"}`} />
+          {clock?.in
+            ? <>fichado desde <strong className="mono">{clock.since ? fmtTime(clock.since) : "—"}</strong> · hoy <strong className="mono">{fmtDur(clock.todayMs)}</strong></>
+            : <>sin fichar · hoy <strong className="mono">{fmtDur(clock?.todayMs ?? 0)}</strong></>}
+        </div>
+        <div className="spacer" />
+        <button
+          className={clock?.in ? "ghost" : ""}
+          onClick={() => void act(clock?.in ? "clock.out" : "clock.in", { persona })}
+        >
+          {clock?.in ? "Fichar salida" : "Fichar entrada"}
+        </button>
+        <span className="pill" title={chain?.error ?? "cadena sha256 verificada"}>
+          {chain?.ok ? `cadena ✓ · ${chain.events} ev.` : `cadena ✗`}
+        </span>
+      </div>
+
+      <div className="oficina-grid">
+        <div className="card">
+          <p className="kicker">El Diario — hoy</p>
+          <div className="diary">
+            {(state?.diary ?? []).length === 0 && <div className="empty">Todavía no ha pasado nada hoy.</div>}
+            {[...(state?.diary ?? [])].reverse().map((e) => (
+              <div key={e.seq} className={`diary-row t-${e.type.replace(".", "-")}`}>
+                <span className="mono ts">{fmtTime(e.ts)}</span>
+                <span className="who">{e.actor}</span>
+                <span className="what">{e.text}</span>
+              </div>
+            ))}
+          </div>
+          <div className="row">
+            <div className="field" style={{ flex: 1 }}>
+              <label>Nota rápida (queda en el diario)</label>
+              <input
+                value={nota}
+                onChange={(e) => setNota(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && nota.trim()) { void act("note", { persona, text: nota.trim() }); setNota(""); }
+                }}
+                placeholder="¿Qué está pasando? Enter para anotar."
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <p className="kicker">Tareas del despacho</p>
+          <div className="row">
+            <div className="field" style={{ flex: 2 }}>
+              <label>Nueva tarea</label>
+              <input value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="p.ej. Revisar 210 LEEFFLANG" />
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label>Área</label>
+              <input value={taskArea} onChange={(e) => setTaskArea(e.target.value)} placeholder="fiscal" />
+            </div>
+            <div className="field" style={{ width: 110 }}>
+              <label>Prioridad</label>
+              <select value={taskPrio} onChange={(e) => setTaskPrio(e.target.value as "low" | "normal" | "high")}>
+                <option value="low">baja</option>
+                <option value="normal">normal</option>
+                <option value="high">alta</option>
+              </select>
+            </div>
+            <button
+              style={{ alignSelf: "flex-end" }}
+              onClick={() => {
+                if (!taskTitle.trim()) return;
+                void act("task.created", {
+                  id: slug(taskTitle),
+                  title: taskTitle.trim(),
+                  ...(taskArea.trim() ? { area: taskArea.trim() } : {}),
+                  priority: taskPrio,
+                });
+                setTaskTitle("");
+              }}
+            >
+              Crear
+            </button>
+          </div>
+          <div className="board">
+            {cols.map(([col, label]) => (
+              <div key={col} className="board-col">
+                <div className="board-head">{label} <span className="n">{tasks.filter((t) => t.status === col).length}</span></div>
+                {tasks.filter((t) => t.status === col).map((t) => (
+                  <div key={t.id} className={`task p-${t.priority ?? "normal"}`}>
+                    <div className="task-title">{t.title}</div>
+                    {t.area && <span className="chip">{t.area}</span>}
+                    <div className="task-actions">
+                      {cols.filter(([c]) => c !== col).map(([c, l]) => (
+                        <button key={c} className="ghost mini" onClick={() => void act("task.moved", { id: t.id, to: c })}>
+                          → {l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

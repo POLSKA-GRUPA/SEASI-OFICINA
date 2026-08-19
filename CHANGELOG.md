@@ -2,6 +2,24 @@
 
 Formato: versiones semver. El "interno" indica fase de despliegue (ver DEPLOYMENT.md).
 
+## [0.2.0] — interno (2026-08-19)
+
+### Añadido — La Oficina v0 (diario local)
+- Dominio **`oficina/`**: event store humano local `oficina.jsonl` (JSONL append-only
+  con hash-chain sha256): `clock.in/out`, `task.created/moved`, `note`. Un solo log
+  = fichaje auditable + diario del día + tareas; las vistas son proyecciones.
+- Pestaña **Oficina** (home por defecto): reloj de fichaje con total del día,
+  El Diario (feed de hoy, más nuevo arriba), nota rápida (Enter) y board de tareas
+  todo/doing/done con prioridades. La pestaña de sesiones pasa a llamarse "Sesiones".
+- IPC `shell:oficina:{state,append,verify}` + broadcast `shell:oficina:event`
+  (auditados; superficie 17 canales / 2 eventos / 18 métodos).
+- Verificación de cadena en vivo (pill "cadena ✓ · N ev.") y reglas fail-closed
+  (fichaje doble, out sin in, tarea duplicada/desconocida, payload estricto).
+- Renombrado del producto: SEASI Despacho → **SEASI Oficina / «La Oficina»**
+  (repo, package `seasi-oficina`, appId `com.seasi.oficina`, artefactos `La-Oficina-*`).
+- CI verde cross-platform: digests canónicos LF (Windows + autocrlf), `uv` en
+  runners con pre-warm del venv del kernel.
+
 ## [0.1.1] — interno (2026-08-17)
 
 ### Añadido

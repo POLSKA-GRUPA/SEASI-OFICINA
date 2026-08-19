@@ -25,6 +25,7 @@ UI React ──(window.seasi.call / window.seasi.shell)──▶ main Electron �
 | Dominio | Qué | Tests |
 |---|---|---|
 | `kernel-bridge/` | cliente tipado RPC, errores kernel→tipos | unit + integración REAL contra kernel vía `uv` |
+| `oficina/` | event store humano local: fichaje, diario, tareas (JSONL append-only + hash-chain) | cadena/tamper + reglas fail-closed + proyecciones |
 | `brain/` | parser `[[wikilinks]]`, grafo, board kanban, mover tarjetas | corpus adversarial + perf 5k links |
 | `update/` | feed firmado ed25519, anti-downgrade, verificación de artefacto | claves reales, forjas, canal equivocado |
 | `backup/` | backups con ancla de hashes + restauración verificada | corrupción byte, manifest ilegible, truncamiento |

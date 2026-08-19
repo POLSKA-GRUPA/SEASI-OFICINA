@@ -35,6 +35,22 @@ const shell = {
   },
   diagnosticsExport: (): Promise<{ exported: boolean; path: string }> =>
     ipcRenderer.invoke("shell:diagnostics:export"),
+  oficinaState: (): Promise<unknown> => ipcRenderer.invoke("shell:oficina:state"),
+  oficinaAppend: (
+    type: string,
+    actor: string,
+    payload: unknown,
+  ): Promise<{ ok: true; event: unknown } | { ok: false; reason: string; message: string }> =>
+    ipcRenderer.invoke("shell:oficina:append", type, actor, payload),
+  oficinaVerify: (): Promise<{ ok: boolean; events: number; error?: string }> =>
+    ipcRenderer.invoke("shell:oficina:verify"),
+  onOficinaEvent: (cb: (payload: { seq: number; type: string }) => void): (() => void) => {
+    const listener = (_e: unknown, payload: { seq: number; type: string }): void => cb(payload);
+    ipcRenderer.on("shell:oficina:event", listener as never);
+    return () => {
+      ipcRenderer.removeListener("shell:oficina:event", listener as never);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld("seasi", { version: "0.1.0", call, shell });

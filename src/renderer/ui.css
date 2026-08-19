@@ -333,3 +333,36 @@ td strong { font-weight: 600; }
 .empty::before {
   content: "◇"; display: block; font-size: 18px; color: var(--text-3); margin-bottom: 4px;
 }
+
+/* ── Oficina: reloj, diario, board ───────────────────────────────── */
+
+.oficina { display: flex; flex-direction: column; gap: 14px; }
+
+.oficina-clock { display: flex; align-items: flex-end; gap: 16px; }
+.oficina-clock .clock-time { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; color: var(--fg, #d7d8dc); }
+.oficina-clock .spacer { flex: 1; }
+
+.oficina-grid { display: grid; grid-template-columns: minmax(320px, 5fr) minmax(360px, 4fr); gap: 14px; align-items: start; }
+@media (max-width: 1100px) { .oficina-grid { grid-template-columns: 1fr; } }
+
+.diary { display: flex; flex-direction: column; gap: 4px; max-height: 46vh; overflow-y: auto; margin-bottom: 12px; padding-right: 4px; }
+.diary-row { display: grid; grid-template-columns: 48px 96px 1fr; gap: 10px; align-items: baseline; padding: 5px 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.02); animation: fadeIn 0.18s ease; }
+.diary-row .ts { color: #7e8187; font-size: 12px; }
+.diary-row .who { color: var(--brand-accent, #8b5cf6); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diary-row .what { font-size: 13px; }
+.diary-row.t-clock-in .what { color: #5ee2a0; }
+.diary-row.t-clock-out .what { color: #e0a34e; }
+.diary-row.t-task-done .what { text-decoration: line-through; color: #7e8187; }
+
+.board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+.board-col { display: flex; flex-direction: column; gap: 8px; min-height: 120px; background: rgba(255, 255, 255, 0.02); border-radius: 10px; padding: 8px; }
+.board-head { font-size: 12px; font-weight: 600; color: #9a9da3; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 4px; }
+.board-head .n { color: #7e8187; font-weight: 500; }
+.task { border: 1px solid rgba(255, 255, 255, 0.07); border-left: 3px solid #5a5d63; border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; background: rgba(20, 20, 24, 0.6); }
+.task.p-high { border-left-color: #e0a34e; }
+.task.p-low { opacity: 0.85; }
+.task-title { font-size: 13px; line-height: 1.35; }
+.task-actions { display: flex; gap: 6px; }
+.task-actions .mini { font-size: 11px; padding: 2px 8px; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }

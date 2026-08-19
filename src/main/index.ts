@@ -29,6 +29,7 @@ import {
 } from "../domains/backup/backup";
 import { checkForUpdate, UpdateError } from "../domains/update/updater";
 import { LocalMcpProxy } from "../domains/mcp-proxy/proxy";
+import { OficinaStore, OficinaError, OFICINA_EVENT_TYPES, type OficinaEventType } from "../domains/oficina/store";
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
 
@@ -51,7 +52,14 @@ function paths() {
     backups: join(home, "backups"),
     tenant: join(home, "tenant.json"),
     diagnostics: join(home, "diagnostics"),
+    oficina: join(home, "oficina.jsonl"),
   } as const;
+}
+
+let oficinaStore: OficinaStore | null = null;
+function getOficina(): OficinaStore {
+  oficinaStore ??= new OficinaStore(paths().oficina);
+  return oficinaStore;
 }
 
 // ---------------------------------------------------------------- kernel rpc
@@ -275,6 +283,29 @@ app.whenReady().then(() => {
     "seasi:rpc",
     (_evt, method: string, params?: Record<string, unknown>) => rpcCall(method, params),
   );
+
+  // oficina: event store humano local (fichaje/tareas/diario) — append-only
+  ipcMain.handle("shell:oficina:state", () => getOficina().state());
+  ipcMain.handle(
+    "shell:oficina:append",
+    (_e, type: string, actor: string, payload: unknown): { ok: true; event: unknown } | { ok: false; reason: string; message: string } => {
+      if (!OFICINA_EVENT_TYPES.includes(type as OficinaEventType)) {
+        return { ok: false, reason: "invalid_event", message: `tipo desconocido: ${type}` };
+      }
+      try {
+        const event = getOficina().append(type as OficinaEventType, actor, payload);
+        for (const w of BrowserWindow.getAllWindows()) {
+          w.webContents.send("shell:oficina:event", { seq: event.seq, type: event.type });
+        }
+        return { ok: true, event };
+      } catch (err) {
+        if (err instanceof OficinaError) return { ok: false, reason: err.reason, message: err.message };
+        console.error("[oficina] append inesperado:", err);
+        return { ok: false, reason: "io", message: String(err) };
+      }
+    },
+  );
+  ipcMain.handle("shell:oficina:verify", () => getOficina().verify());
 
   // vault: metadata only — values never leave this process
   ipcMain.handle("shell:vault:list", () => getVault().list());
