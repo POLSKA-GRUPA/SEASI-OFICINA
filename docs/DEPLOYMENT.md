@@ -1,4 +1,4 @@
-# Despliegue — SEASI Despacho
+# Despliegue — SEASI Oficina
 
 > Fuente de verdad de fases: `SEASI-CORE/openspec/changes/sea-sic-core-v0/specs/deployment-infra/spec.md`
 
@@ -37,14 +37,15 @@ excepción de Gatekeeper** (clic derecho → Abrir). Nunca toca ajustes globales
 
 ```bash
 node scripts/gen-keys.mjs ./keys
-cp keys/update-public.pem "$HOME/Library/Application Support/seasi-despacho/update-public.pem"
+cp keys/update-public.pem "$HOME/Library/Application Support/La Oficina/update-public.pem"
+# (datos previos al rename: la carpeta antigua era "SEASI Despacho" — si existía, muévela a "La Oficina")
 ```
 
 2. Firmar cada release (el feed es un JSON publicado en GitHub Release privado / R2):
 
 ```bash
 node scripts/sign-update.mjs \
-  --artifact dist/SEASI-Despacho-0.2.0.dmg \
+  --artifact dist/La-Oficina-0.2.0.dmg \
   --version 0.2.0 --channel pgk-internal \
   --key keys/update-private.pem --out dist/feed.json
 ```

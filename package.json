@@ -1,9 +1,9 @@
 {
-  "name": "seasi-despacho",
-  "productName": "SEASI Despacho",
+  "name": "seasi-oficina",
+  "productName": "La Oficina",
   "version": "0.1.0",
   "private": true,
-  "description": "Shell de escritorio local-first para el kernel SEASI-CORE (despacho fiscal). Electron + TypeScript estricto + React.",
+  "description": "Shell de escritorio local-first para el kernel SEASI-CORE — La Oficina: fichaje, diario y agentes del equipo en una sola app. Electron + TypeScript estricto + React.",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {

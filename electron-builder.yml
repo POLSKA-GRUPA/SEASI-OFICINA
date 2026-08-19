@@ -1,5 +1,5 @@
-appId: com.seasi.despacho
-productName: SEASI Despacho
+appId: com.seasi.oficina
+productName: La Oficina
 directories:
   output: dist
   buildResources: build
@@ -18,8 +18,8 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
 dmg:
-  title: "SEASI Despacho ${version}"
-  artifactName: "SEASI-Despacho-${version}-arm64.dmg"
+  title: "La Oficina ${version}"
+  artifactName: "La-Oficina-${version}-arm64.dmg"
 win:
   target:
     - target: nsis
@@ -29,5 +29,5 @@ win:
 nsis:
   oneClick: false
   perMachine: false
-  artifactName: "SEASI-Despacho-Setup-${version}-x64.exe"
+  artifactName: "La-Oficina-Setup-${version}-x64.exe"
 publish: null

@@ -104,7 +104,7 @@ try {
 let width = Math.max(...results.map((r) => r.name.length));
 let failures = 0;
 console.log("═".repeat(width + 14));
-console.log(" GATE COMERCIAL — SEASI Despacho");
+console.log(" GATE COMERCIAL — La Oficina");
 console.log("═".repeat(width + 14));
 for (const r of results) {
   const mark = r.ok ? "✓ PASS" : "✗ FAIL";

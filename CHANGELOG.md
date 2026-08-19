@@ -1,4 +1,4 @@
-# Changelog — SEASI Despacho
+# Changelog — SEASI Oficina
 
 Formato: versiones semver. El "interno" indica fase de despliegue (ver DEPLOYMENT.md).
 
@@ -6,7 +6,7 @@ Formato: versiones semver. El "interno" indica fase de despliegue (ver DEPLOYMEN
 
 ### Añadido
 - Streaming en vivo de sesiones: notificaciones `seasi.session.event` del kernel
-  retransmitidas a la UI en tiempo real (panel "Streaming en vivo" en Despacho).
+  retransmitidas a la UI en tiempo real (panel "Streaming en vivo" en Oficina).
 - Pestaña **Uso**: turnos + tokens in/out por sesión (`seasi.usage.summary`).
 - Dominio **mcp-proxy**: OAuth local en 127.0.0.1 con refresh proactivo (skew 60s),
   retry único en 401, fail-closed 503 y cero tokens en logs/respuestas.

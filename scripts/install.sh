@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — SEASI Despacho, FASE INTERNA (sin Developer ID todavía).
+# install.sh — La Oficina (SEASI), FASE INTERNA (sin Developer ID todavía).
 #
 # Uso:  ./install.sh [ruta-al-dmg-o-carpeta-build]
 #
@@ -12,10 +12,10 @@
 
 set -euo pipefail
 
-APP_NAME="SEASI Despacho.app"
+APP_NAME="La Oficina.app"
 SRC="${1:-./dist/mac-arm64}"
 
-echo "== SEASI Despacho · instalación interna =="
+echo "== La Oficina · instalación interna =="
 
 if [[ -d "$SRC" && -d "$SRC/$APP_NAME" ]]; then
   APP="$SRC/$APP_NAME"

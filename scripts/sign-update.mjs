@@ -3,7 +3,7 @@
  * sign-update.mjs — build + sign the private update feed (fase interna).
  *
  *   node scripts/sign-update.mjs \
- *     --artifact dist/SEASI-Despacho-0.2.0.dmg \
+ *     --artifact dist/La-Oficina-0.2.0.dmg \
  *     --version 0.2.0 --channel pgk-internal \
  *     --key keys/update-private.pem \
  *     --out dist/feed.json

@@ -1,4 +1,4 @@
-# Seguridad — SEASI Despacho
+# Seguridad — SEASI Oficina
 
 ## Modelo en una línea
 Shell Electron aislado (sandbox+contextIsolation) → un canal IPC auditado →

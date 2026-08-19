@@ -57,7 +57,7 @@ export const DEFAULT_CONFIG: TenantConfig = {
   schema_version: "seasi.tenant/v1",
   tenant_id: "pgk",
   branding: {
-    name: "PGK — Despacho cero",
+    name: "PGK — Oficina cero",
     tagline: "Cliente cero de SEASI",
     colors: { primary: "#1f6feb", accent: "#f0b429", bg: "#0d1117" },
   },

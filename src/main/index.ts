@@ -1,5 +1,5 @@
 /**
- * SEASI Despacho — Electron main process.
+ * La Oficina (SEASI) — Electron main process.
  *
  * Security posture (openspec sea-sic-core-v0, non-negotiable):
  *   - sandbox: true, contextIsolation: true, nodeIntegration: false
@@ -208,7 +208,7 @@ function createWindow(): void {
   const win = new BrowserWindow({
     width: 1440,
     height: 920,
-    title: `SEASI Despacho — ${config.branding.name}`,
+    title: `La Oficina — ${config.branding.name}`,
     icon: existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
@@ -362,7 +362,7 @@ app.whenReady().then(() => {
     writeFileSync(
       join(dir, "README.txt"),
       [
-        "Paquete de diagnóstico SEASI Despacho.",
+        "Paquete de diagnóstico La Oficina.",
         "Contiene SOLO el ledger local (eventos del kernel).",
         "Revísalo antes de compartirlo con nadie; no contiene secrets del vault.",
       ].join("\n"),

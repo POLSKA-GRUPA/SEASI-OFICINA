@@ -1,5 +1,5 @@
 /**
- * Despacho vault: secrets live ONLY here (main process, OS keychain via the
+ * Oficina vault: secrets live ONLY here (main process, OS keychain via the
  * injected crypto). Values never cross to the renderer; the kernel receives
  * them exclusively as environment variables (env-injection pattern audited
  * from real Electron agent apps — never in prompts, never in model context).

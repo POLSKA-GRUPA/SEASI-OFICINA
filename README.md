@@ -1,10 +1,10 @@
-# SEASI Despacho
+# SEASI Oficina — «La Oficina»
 
 ![estado](https://img.shields.io/badge/estado-INTERNO%20v0.1.1%20%E2%80%94%20no%20revendible%20a%C3%BAn-orange) ![tests](https://img.shields.io/badge/tests-69%20shell%20%E2%80%A2%20171%20kernel-brightgreen)
 
 ![logo](assets/logo.svg)
 
-**Shell de escritorio local-first para el kernel [SEASI-CORE](../SEASI-CORE)** — el "despacho fiscal" de SEASI. Electron + TypeScript estricto + React. Cliente cero: PGK.
+**Shell de escritorio local-first para el kernel [SEASI-CORE](../SEASI-CORE)** — «La Oficina»: donde el equipo (humanos y agentes) ficha, trabaja y colabora en tiempo real. Electron + TypeScript estricto + React. Cliente cero: PGK.
 
 > ⚠️ **Estado honesto**: v0 técnico interno. Probado a nivel kernel y dominios (240 tests), con smoke de ventana y sesión real de validación. **No apto para distribución externa** hasta cruzar `npm run gate:commercial` (ver [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)). Nada de revender todavía.
 
@@ -53,7 +53,7 @@ Requisitos: Node 22+, `uv` con SEASI-CORE al lado (`~/SEASI-CORE`).
 ## Estado v0.1.0
 
 - [x] Kernel channel + 7 métodos RPC (hitl.create/list/decide, usage.summary, streaming por notificaciones)
-- [x] Rail de despacho + **streaming en vivo** (notificaciones `seasi.session.event` broadcast a la UI)
+- [x] Rail de oficina + **streaming en vivo** (notificaciones `seasi.session.event` broadcast a la UI)
 - [x] Cola HITL: crear/listar/aprobar/rechazar con intents sellados
 - [x] Brain: grafo SVG + board + edición de notas
 - [x] Vault (safeStorage + env overlay al kernel + credenciales MCP_*)

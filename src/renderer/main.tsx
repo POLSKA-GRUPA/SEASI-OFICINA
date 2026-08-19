@@ -86,7 +86,7 @@ export function App(): JSX.Element {
         <header className="topbar">
           <div className="brand">
             <BrandMark />
-            <span className="word">{brandName.split(" — ")[0]} <em>Despacho</em></span>
+            <span className="word">{brandName.split(" — ")[0]} <em>Oficina</em></span>
           </div>
           <span className="pill"><span className={`dot ${kernelVersion ? "" : "off"}`} />{kernelVersion ? `kernel ${kernelVersion}` : "kernel…"}</span>
           <span className="pill">shell v{bridge?.version ?? "?"}</span>
@@ -96,7 +96,7 @@ export function App(): JSX.Element {
         <nav className="tabs">
           {(["rail", "hitl", "uso", "brain", "vault", "sistema"] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-              {t === "rail" ? "Despacho" : t === "hitl" ? "HITL" : t === "uso" ? "Uso" : t === "vault" ? "Vault" : t === "sistema" ? "Sistema" : "Brain"}
+              {t === "rail" ? "Oficina" : t === "hitl" ? "HITL" : t === "uso" ? "Uso" : t === "vault" ? "Vault" : t === "sistema" ? "Sistema" : "Brain"}
             </button>
           ))}
         </nav>
@@ -151,7 +151,7 @@ function RailPanel(): JSX.Element {
   return (
     <div className="client-list">
       <h3>Clientes / Sesiones</h3>
-      {grouped.length === 0 && <div className="empty">Sin sesiones todavía.<br />Crea la primera en la pestaña Despacho.</div>}
+      {grouped.length === 0 && <div className="empty">Sin sesiones todavía.<br />Crea la primera en la pestaña Oficina.</div>}
       {grouped.map(([client, rows]) => (
         <div key={client}>
           <div className="client" onClick={() => setSelected(client)}>
@@ -461,7 +461,7 @@ function BrainView(): JSX.Element {
   return (
     <div>
       <div className="card">
-        <h3>Brain del despacho — {graph.nodes.length} notas · {graph.edges.length} enlaces · {graph.orphans.length} huérfanas · {totalLinks} wikilinks</h3>
+        <h3>Brain de la oficina — {graph.nodes.length} notas · {graph.edges.length} enlaces · {graph.orphans.length} huérfanas · {totalLinks} wikilinks</h3>
         <svg className="graph" viewBox="0 0 960 340">
           {graph.edges.map(([a, b]) => {
             const pa = positions.get(a); const pb = positions.get(b);
@@ -525,7 +525,7 @@ function VaultView(): JSX.Element {
   return (
     <div>
       <div className="card">
-        <h3>Vault del despacho</h3>
+        <h3>Vault de la oficina</h3>
         <p className="meta">Los valores se cifran con el Keychain del sistema (safeStorage) y SOLO se inyectan como variables de entorno a los procesos del kernel. Nunca viajan al modelo ni a esta interfaz.</p>
       </div>
       <div className="vault-grid">

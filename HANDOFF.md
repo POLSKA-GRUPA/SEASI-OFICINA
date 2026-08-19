@@ -1,6 +1,6 @@
-# HANDOFF — SEASI Despacho (pausa por trabajo del owner)
+# HANDOFF — SEASI Oficina (pausa por trabajo del owner)
 
-> Fecha: 2026-08-17 ~19:00 · Rama kernel: `feat/sea-sic-core-v0` · Repo shell: `~/SEASI-DESPACHO` (main)
+> Fecha: 2026-08-17 ~19:00 (rename a Oficina: 2026-08-19) · Rama kernel: `feat/sea-sic-core-v0` · Repo shell: `~/SEASI-OFICINA` (main)
 
 ## Estado en una frase
 
@@ -28,7 +28,7 @@ Motor 100% verde (kernel 171 tests + shell 69 tests, SSOT con drift imposible, s
 
 - `assets/mockup-v3-mono.png` — 8.5/10 según visión, aprobado en dirección
 - `assets/mockup-v4-mono.html` — **el definitivo**: dock + agentes con avatares + tarjetas de acción + composer con píldoras + preview pane + status bar. Ábrelo en Chrome para verlo (es HTML estático real)
-- `scripts/capture-mockup.js` — herramienta: `SEASI-DESPACHO/node_modules/.bin/electron scripts/capture-mockup.js <html> <out.png>` (captura mockups con Electron offscreen)
+- `scripts/capture-mockup.js` — herramienta: `SEASI-OFICINA/node_modules/.bin/electron scripts/capture-mockup.js <html> <out.png>` (captura mockups con Electron offscreen)
 
 ## PENDIENTE (en orden)
 
@@ -50,12 +50,12 @@ Motor 100% verde (kernel 171 tests + shell 69 tests, SSOT con drift imposible, s
 
 ```bash
 # shell (UI)
-cd ~/SEASI-DESPACHO && npx tsc --noEmit && npx vitest run   # 69 tests
+cd ~/SEASI-OFICINA && npx tsc --noEmit && npx vitest run   # 69 tests
 SEASI_CORE_DIR=~/SEASI-CORE npm run dev                     # app de verdad
 # kernel
 cd ~/SEASI-CORE && uv run pytest                            # 171 tests
 # mockup v4 en navegador
-open ~/SEASI-DESPACHO/assets/mockup-v4-mono.html
+open ~/SEASI-OFICINA/assets/mockup-v4-mono.html
 # Granular de referencia (cerrada para liberar RAM)
 open -a Granular   # proyecto: granular-playground (NO abrir PGK_Empresa_Autonoma ahí)
 ```

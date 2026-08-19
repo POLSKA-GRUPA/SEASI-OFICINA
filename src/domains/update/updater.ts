@@ -6,7 +6,7 @@
  *   "channel": "pgk-internal",
  *   "version": "0.2.0",
  *   "createdAt": "2026-08-17T16:00:00Z",
- *   "files": [{ "name": "SEASI-Despacho-0.2.0.dmg", "sha256": "...", "size": 123 }]
+ *   "files": [{ "name": "La-Oficina-0.2.0.dmg", "sha256": "...", "size": 123 }]
  * }
  * + detached signature (base64) over the canonical JSON.
  *

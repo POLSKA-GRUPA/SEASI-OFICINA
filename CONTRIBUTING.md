@@ -1,4 +1,4 @@
-# CONTRIBUTING — SEASI Despacho
+# CONTRIBUTING — SEASI Oficina
 
 ## Reglas de oro (no negociables)
 
