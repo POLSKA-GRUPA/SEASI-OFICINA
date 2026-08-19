@@ -1,28 +1,37 @@
-SEASI DESPACHO — LICENCIA DE SOFTWARE (PROPIETARIA)
+LICENCIA DE SOFTWARE — CÓDIGO PROPIETARIO
 
-Copyright (c) 2026 Kenyi Martín Alcántara / SEA-SIC. Todos los derechos reservados.
+Copyright (c) 2025-2026 FUNDADOR SUPREMO, S.L.
+Registro Mercantil de Madrid, hoja M-851326
+C/ de la Mezquita 6, 4.º A, 28054 Madrid (España)
 
-1. DEFINICIÓN
-   Este software ("SEASI Despacho") es el shell de escritorio white-label de la
-   plataforma SEASI. Se distribuye bajo licencia comercial privada, por inquilino.
+1. Titularidad. Todo el código fuente, la documentación, la identidad visual
+   y demás materiales de este repositorio son propiedad exclusiva de
+   FUNDADOR SUPREMO, S.L. (en adelante, «la Titular»). Todos los derechos
+   reservados.
 
-2. QUÉ SE PUEDE HACER
-   a) Usarlo internamente en PGK (cliente cero) sin coste.
-   b) Los inquilinos con licencia activa pueden usar SU copia según los términos
-      de su entitlement firmado (tenant, canal, versión, expiración).
-   c) Los módulos SEASI-CORE conservan SU propia licencia (ver ese repositorio).
+2. Acceso restringido. Este repositorio es privado. El mero acceso al mismo
+   no otorga licencia de uso, copia, modificación ni redistribución, salvo
+   lo previsto en el apartado 3.
 
-3. QUÉ NO SE PUEDE HACER
-   a) Redistribuir, revender o sublicenciar sin entitlement válido firmado por
-      SEA-SIC.
-   b) Instalar un paquete de un canal/tenant en otra instalación (rechazado por
-      diseño: domains/entitlement).
-   c) Extraer credenciales del vault de otra instalación.
+3. Uso interno. La Titular autoriza el uso, la copia y la modificación del
+   software únicamente a las personas con acceso concedido, con la única
+   finalidad de colaborar en su desarrollo para la Titular. Queda prohibida
+   toda redistribución, publicación, sublicencia, venta o explotación del
+   software o de partes del mismo sin autorización previa, expresa y por
+   escrito de la Titular.
 
-4. SIN GARANTÍA
-   El software se proporciona "tal cual", sin garantía de ningún tipo. Fase
-   interna: no apto para distribución externa hasta que `npm run
-   gate:commercial` esté íntegramente en verde (ver docs/DEPLOYMENT.md).
+4. Sin garantías. EL SOFTWARE SE PROPORCIONA «TAL CUAL», SIN GARANTÍAS DE
+   NINGUNA CLASE, EXPRESAS O IMPLÍCITAS, INCLUIDAS ENTRE OTRAS LAS
+   GARANTÍAS DE COMERCIABILIDAD, IDONEIDAD PARA UN PROPÓSITO PARTICULAR E
+   INCUMPLIMIENTO. EN NINGÚN CASO LA TITULAR SERÁ RESPONSABLE DE RECLAMACIÓN,
+   DAÑOS U OTRAS RESPONSABILIDADES, YA SEA EN ACCIÓN CONTRACTUAL, EXTRACONTRACTUAL
+   O CUALQUIER OTRA, DERIVADAS DE O EN CONEXIÓN CON EL SOFTWARE O SU USO.
 
-5. CONTACTO LICENCIAS
-   Licencias y entitlements: SEA-SIC — Kenyi Martín Alcántara.
+5. Futura apertura. Si el repositorio se hiciera público, la licencia
+   aplicable a las distribuciones realizadas a partir de entonces será la
+   que la Titular publique en su momento; esta licencia propietaria
+   continuará aplicándose a toda copia obtenida durante la vigencia de la
+   presente.
+
+6. Contacto. A través del perfil de GitHub de la Titular o de su
+   administrador único.
