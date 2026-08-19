@@ -19,6 +19,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: astral-sh/setup-uv@v6
+      - name: Preparar kernel (uv sync del venv real)
+        run: uv run --project SEASI-CORE python -c "import seasi_core"
+        shell: bash
       - name: Generar contratos + gate de digests + auditoría IPC
         working-directory: seasi-oficina
         run: |

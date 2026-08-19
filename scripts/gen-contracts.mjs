@@ -31,6 +31,9 @@ const MANAGED_FILES = [
 const UNMANAGED_REFS = ["tenant-scope.schema.json"]; // read-only, pre-existing
 
 const sha256 = (t) => createHash("sha256").update(t, "utf8").digest("hex");
+// Digests are canonical over LF: a Windows checkout (autocrlf) must not
+// change what the MANIFEST recorded.
+const canon = (t) => t.replace(/\r\n/g, "\n");
 
 function loadAll() {
   if (!existsSync(SCHEMAS_DIR)) {
@@ -41,7 +44,7 @@ function loadAll() {
   const schemas = {};
   const digests = {};
   for (const name of MANAGED_FILES) {
-    const text = readFileSync(resolve(SCHEMAS_DIR, name), "utf8");
+    const text = canon(readFileSync(resolve(SCHEMAS_DIR, name), "utf8"));
     const digest = sha256(text);
     if (manifest.files[name] !== digest) {
       console.error(`MANIFEST mismatch for ${name}: kernel exports are stale`);
@@ -52,7 +55,7 @@ function loadAll() {
   }
   for (const name of UNMANAGED_REFS) {
     schemas[name] = JSON.parse(readFileSync(resolve(SCHEMAS_DIR, name), "utf8"));
-    digests[name] = sha256(readFileSync(resolve(SCHEMAS_DIR, name), "utf8"));
+    digests[name] = sha256(canon(readFileSync(resolve(SCHEMAS_DIR, name), "utf8")));
   }
   return { manifest, schemas, digests };
 }
@@ -171,7 +174,7 @@ if (isCheck) {
     console.error("generated contracts missing; run `npm run contracts`");
     process.exit(1);
   }
-  if (readFileSync(OUT_FILE, "utf8") !== output) {
+  if (canon(readFileSync(OUT_FILE, "utf8")) !== output) {
     console.error("contracts drifted; run `npm run contracts`");
     process.exit(1);
   }

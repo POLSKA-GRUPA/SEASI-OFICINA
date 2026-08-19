@@ -1,0 +1,10 @@
+# LF canónico en todo el árbol: los digests de contratos (sha256) y las
+# comparaciones de drift son sobre LF; un checkout Windows no debe alterarlos.
+* text=auto eol=lf
+
+# Binarios: nunca normalizar
+*.png binary
+*.svg text eol=lf
+*.icns binary
+*.dmg binary
+*.exe binary
