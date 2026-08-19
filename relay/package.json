@@ -1,0 +1,13 @@
+{
+  "name": "seasi-oficina-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Relay de tiempo real de La Oficina (presencia + fan-out de eventos). Despliegue independiente; la verdad vive en cada cliente.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

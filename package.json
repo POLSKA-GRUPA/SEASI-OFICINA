@@ -1,7 +1,7 @@
 {
   "name": "seasi-oficina",
   "productName": "La Oficina",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Shell de escritorio local-first para el kernel SEASI-CORE — La Oficina: fichaje, diario y agentes del equipo en una sola app. Electron + TypeScript estricto + React.",
   "type": "module",
@@ -18,17 +18,20 @@
     "contracts:check": "node scripts/gen-contracts.mjs --check"
   },
   "dependencies": {
+    "ws": "^8.18.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.1",
     "electron": "^37.10.3",
     "electron-vite": "^4.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.7.0",
     "vite": "^7.0.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "ws": "^8.21.3"
   }
 }

@@ -48,6 +48,13 @@ export const TenantConfigSchema = z
     branding: BrandingSchema,
     capabilities: CapabilitiesSchema,
     governance: GovernanceSchema,
+    // R3 — relay de tiempo real de La Oficina (opcional: sin él, modo local)
+    relay: z
+      .object({
+        url: z.string().url().max(200),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

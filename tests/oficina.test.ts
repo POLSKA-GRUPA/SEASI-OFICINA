@@ -5,6 +5,7 @@
  * board, diario del día) y persistencia entre instancias.
  */
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -38,6 +39,37 @@ describe("cadena append-only", () => {
     const events = s2.read();
     expect(events.length).toBeGreaterThanOrEqual(2);
     expect(s2.verify()).toMatchObject({ ok: true, events: events.length });
+  });
+
+  it("v2: eventos nuevos llevan uid+origin estables por máquina", () => {
+    const s = new OficinaStore(file);
+    const evs = s.read();
+    for (const e of evs) {
+      expect(e.uid).toMatch(/^[0-9a-f-]{36}$/);
+      expect(e.origin).toMatch(/^mc-/);
+    }
+    expect(s.origin()).toBe(s.origin()); // estable
+    const other = new OficinaStore(file);
+    expect(other.origin()).toBe(s.origin()); // sidecar compartido
+  });
+
+  it("v1 legacy: log sin uid/origin carga y su cadena verifica", () => {
+    const legacyFile = join(dir, "legacy.jsonl");
+    // eventos v0.2 a mano (hash sin uid/origin)
+    const mk = (seq: number, prev: string, type: string, actor: string, payload: unknown, ts: string) => {
+      const base = { seq, ts, type, actor, payload, prev_hash: prev };
+      const hash = createHash("sha256").update([seq, ts, type, actor, JSON.stringify(payload), prev].join("|"), "utf8").digest("hex");
+      return `${JSON.stringify({ ...base, hash })}`;
+    };
+    const l1 = mk(1, "genesis", "note", "kenyi", { persona: "kenyi", text: "antes del relay" }, T(8));
+    const h1 = JSON.parse(l1) as { hash: string };
+    const l2 = mk(2, h1.hash, "clock.in", "kenyi", { persona: "kenyi" }, T(9));
+    writeFileSync(legacyFile, `${l1}\n${l2}\n`, "utf8");
+    const s = new OficinaStore(legacyFile);
+    expect(s.read().length).toBe(2);
+    expect(s.verify().ok).toBe(true);
+    const ev = s.append("clock.out", "kenyi", { persona: "kenyi" }, T(18)); // mezcla v1+v2
+    expect(ev.uid).toBeDefined();
   });
 
   it("tamper de una línea → chain_corrupt al reabrir", () => {
@@ -92,9 +124,66 @@ describe("reglas de negocio fail-closed", () => {
     s.append("clock.in", "kenyi", { persona: "kenyi" }, T(9));
     s.append("clock.out", "kenyi", { persona: "kenyi" }, T(14));
     expect(() => s.append("clock.in", "kenyi", { persona: "kenyi" }, T(16))).not.toThrow();
-    const st = s.state(T(17));
+    const st = s.state(T(17), "kenyi");
     expect(st.clock.in).toBe(true);
     expect(st.clock.since).toBe(T(16));
+  });
+
+  it("fichaje POR-PERSONA: kenyi y natalia pueden estar fichadas a la vez", () => {
+    const s = new OficinaStore(join(dir, "rules-multipersona.jsonl"));
+    s.append("clock.in", "kenyi", { persona: "kenyi" }, T(9));
+    expect(() => s.append("clock.in", "natalia", { persona: "natalia" }, T(9, 5))).not.toThrow();
+    expect(() => s.append("clock.in", "kenyi", { persona: "kenyi" }, T(9, 30))).toThrowError(/kenyi ya tiene/);
+    const st = s.state(T(10), "kenyi");
+    expect(st.openClocks).toEqual(
+      expect.arrayContaining([
+        { persona: "kenyi", since: T(9) },
+        { persona: "natalia", since: T(9, 5) },
+      ]),
+    );
+    expect(st.clock.in).toBe(true); // la de kenyi
+  });
+
+  it("applyRemote: idempotente por uid + conflictos de tarea en silencio", () => {
+    const s = new OficinaStore(join(dir, "remote.jsonl"));
+    const env = {
+      type: "note" as const,
+      actor: "natalia",
+      payload: { persona: "natalia", text: "buenos días desde mi máquina" },
+      uid: "11111111-2222-3333-8444-555555555555",
+      origin: "mc-otra",
+    };
+    const r1 = s.applyRemote(env);
+    expect(r1.applied).toBe(true);
+    const r2 = s.applyRemote({ ...env, ts: T(10) }); // replay del relay
+    expect(r2).toMatchObject({ applied: false, reason: "duplicate" });
+    // tarea remota con id que ya existe → skip, no error
+    s.append("task.created", "kenyi", { id: "m-210", title: "La mía" }, T(9));
+    const r3 = s.applyRemote({
+      type: "task.created",
+      actor: "natalia",
+      payload: { id: "m-210", title: "La suya" },
+      uid: "11111111-2222-3333-8444-555555555556",
+      origin: "mc-otra",
+    });
+    expect(r3).toMatchObject({ applied: false, reason: "task_state" });
+    // moved de tarea que solo existe allá → skip
+    const r4 = s.applyRemote({
+      type: "task.moved",
+      actor: "natalia",
+      payload: { id: "solo-alla", to: "done" },
+      uid: "11111111-2222-3333-8444-555555555557",
+      origin: "mc-otra",
+    });
+    expect(r4).toMatchObject({ applied: false, reason: "task_state" });
+    // dedupe sobrevive a reabrir (rebuild desde el log)
+    const s2 = new OficinaStore(join(dir, "remote.jsonl"));
+    expect(s2.hasUid(env.uid)).toBe(true);
+    expect(s2.applyRemote(env)).toMatchObject({ applied: false, reason: "duplicate" });
+    // uid inválido → invalid
+    expect(
+      s.applyRemote({ type: "note", actor: "x", payload: { persona: "x", text: "hola" }, uid: "no-uuid", origin: "mc-x" }),
+    ).toMatchObject({ applied: false, reason: "invalid" });
   });
 });
 
@@ -111,14 +200,14 @@ describe("proyecciones", () => {
   s.append("task.moved", "kenyi", { id: "rename-shell", to: "done" }, T(17, 30));
 
   it("reloj: total del día suma intervalos cerrados + abierto", () => {
-    const st = s.state(T(18));
+    const st = s.state(T(18), "kenyi");
     expect(st.clock.in).toBe(true);
     expect(st.clock.todayMs).toBe(7 * 3600 * 1000);
     expect(st.clock.persona).toBe("kenyi");
   });
 
   it("board: tarea proyecta último estado", () => {
-    const st = s.state(T(18));
+    const st = s.state(T(18), "kenyi");
     const t = st.tasks.find((x) => x.id === "rename-shell");
     expect(t).toBeDefined();
     expect(t?.status).toBe("done");
@@ -127,7 +216,7 @@ describe("proyecciones", () => {
   });
 
   it("diario: solo eventos de HOY, ordenados, con línea legible", () => {
-    const st = s.state(T(18));
+    const st = s.state(T(18), "kenyi");
     expect(st.diary.length).toBe(7);
     expect(st.diary[0]?.type).toBe("clock.in");
     expect(st.diary[5]?.text).toBe("CI verde en ambos SO");
@@ -136,7 +225,7 @@ describe("proyecciones", () => {
 
   it("diario excluye otro día local", () => {
     const otroDia = new Date(2026, 7, 20, 10, 0).toISOString();
-    const st = s.state(otroDia);
+    const st = s.state(otroDia, "kenyi");
     expect(st.diary.length).toBe(0);
     expect(st.clock.in).toBe(false); // jornada abierta era de ayer
     expect(st.tasks.length).toBe(1); // el board es acumulativo

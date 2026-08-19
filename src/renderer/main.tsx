@@ -24,10 +24,19 @@ type Bridge = {
     mcpStatus: () => Promise<unknown>;
     onSessionEvent: (cb: (payload: { method: string; params: unknown }) => void) => () => void;
     diagnosticsExport: () => Promise<{ exported: boolean; path: string }>;
-    oficinaState: () => Promise<OficinaState>;
+    oficinaState: (persona?: string) => Promise<OficinaState>;
     oficinaAppend: (type: string, actor: string, payload: unknown) => Promise<{ ok: true; event: unknown } | { ok: false; reason: string; message: string }>;
     oficinaVerify: () => Promise<{ ok: boolean; events: number; error?: string }>;
-    onOficinaEvent: (cb: (payload: { seq: number; type: string }) => void) => () => void;
+    onOficinaEvent: (
+      cb: (payload: { seq?: number; type?: string; kind?: string; actor?: string; status?: string; online?: { persona: string; since: string }[] }) => void,
+    ) => () => void;
+    oficinaIdentify: (persona: string) => Promise<{ ok: boolean }>;
+    relayStatus: () => Promise<{
+      configured: boolean;
+      status: "off" | "connecting" | "online";
+      url: string | null;
+      roster: { persona: string; since: string }[];
+    }>;
   };
 };
 
@@ -637,10 +646,18 @@ const slug = (title: string): string =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 48) || `tarea-${Date.now()}`;
 
+type RelayInfo = {
+  configured: boolean;
+  status: "off" | "connecting" | "online";
+  url: string | null;
+  roster: { persona: string; since: string }[];
+};
+
 function OficinaView(): JSX.Element {
   const [persona, setPersona] = useState<string>(() => localStorage.getItem("oficina.persona") ?? "kenyi");
   const [state, setState] = useState<OficinaState | null>(null);
   const [chain, setChain] = useState<{ ok: boolean; events: number; error?: string } | null>(null);
+  const [relay, setRelay] = useState<RelayInfo | null>(null);
   const [nota, setNota] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
   const [taskArea, setTaskArea] = useState("");
@@ -648,15 +665,29 @@ function OficinaView(): JSX.Element {
   const [err, setErr] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
-    bridge?.shell.oficinaState().then(setState).catch((e: unknown) => setErr(String(e)));
+    bridge?.shell.oficinaState(persona).then(setState).catch((e: unknown) => setErr(String(e)));
     bridge?.shell.oficinaVerify().then(setChain).catch(() => undefined);
-  }, []);
+  }, [persona]);
 
   useEffect(() => {
     refresh();
     if (!bridge) return;
-    return bridge.shell.onOficinaEvent(() => refresh());
+    return bridge.shell.onOficinaEvent((payload) => {
+      if (payload.kind === "roster") {
+        setRelay((prev) => (prev ? { ...prev, roster: payload.online ?? [] } : prev));
+      } else if (payload.kind === "status") {
+        setRelay((prev) => (prev ? { ...prev, status: (payload.status as RelayInfo["status"]) ?? prev.status } : prev));
+      } else {
+        refresh();
+      }
+    });
   }, [refresh]);
+
+  // presencia: identificar a la persona que mira + cargar estado del relay
+  useEffect(() => {
+    void bridge?.shell.oficinaIdentify(persona);
+    bridge?.shell.relayStatus().then(setRelay).catch(() => undefined);
+  }, [persona]);
 
   useEffect(() => {
     localStorage.setItem("oficina.persona", persona);
@@ -689,6 +720,15 @@ function OficinaView(): JSX.Element {
             : <>sin fichar · hoy <strong className="mono">{fmtDur(clock?.todayMs ?? 0)}</strong></>}
         </div>
         <div className="spacer" />
+        <span
+          className="pill"
+          title={relay?.url ?? "sin relay configurado (modo local)"}
+        >
+          <span
+            className={`dot ${relay?.status === "online" ? "" : relay?.status === "connecting" ? "warn" : "off"}`}
+          />
+          {relay?.configured ? `relay ${relay.status}` : "local"}
+        </span>
         <button
           className={clock?.in ? "ghost" : ""}
           onClick={() => void act(clock?.in ? "clock.out" : "clock.in", { persona })}
@@ -698,6 +738,33 @@ function OficinaView(): JSX.Element {
         <span className="pill" title={chain?.error ?? "cadena sha256 verificada"}>
           {chain?.ok ? `cadena ✓ · ${chain.events} ev.` : `cadena ✗`}
         </span>
+      </div>
+
+      <div className="card oficina-roster">
+        <div>
+          <span className="kicker">En línea</span>
+          <div className="roster-row">
+            {(relay?.roster ?? []).length === 0 && (
+              <span className="meta">nadie más conectado{relay?.configured ? "" : " (sin relay)"}</span>
+            )}
+            {(relay?.roster ?? []).map((p) => (
+              <span key={p.persona} className={`pill persona ${p.persona === persona ? "me" : ""}`}>
+                <span className="dot" />{p.persona}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div>
+          <span className="kicker">Fichados hoy</span>
+          <div className="roster-row">
+            {(state?.openClocks ?? []).length === 0 && <span className="meta">nadie con jornada abierta</span>}
+            {(state?.openClocks ?? []).map((c) => (
+              <span key={c.persona} className="pill persona working">
+                <span className="dot" />{c.persona} <span className="mono">{fmtTime(c.since)}</span>
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="oficina-grid">

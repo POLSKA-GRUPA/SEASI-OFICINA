@@ -30,6 +30,8 @@ const EXPECTED_SHELL = [
   "oficinaAppend",
   "oficinaVerify",
   "onOficinaEvent",
+  "oficinaIdentify",
+  "relayStatus",
 ];
 
 const EXPECTED_EVENT_CHANNELS = ["shell:session:event", "shell:oficina:event"];
@@ -52,6 +54,8 @@ const EXPECTED_CHANNELS = [
   "shell:oficina:state",
   "shell:oficina:append",
   "shell:oficina:verify",
+  "shell:oficina:identify",
+  "shell:oficina:relay",
 ];
 
 const problems = [];

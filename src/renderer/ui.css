@@ -366,3 +366,13 @@ td strong { font-weight: 600; }
 .task-actions .mini { font-size: 11px; padding: 2px 8px; }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+
+/* ── Oficina R3: roster y presencia ──────────────────────────────── */
+
+.oficina-roster { display: flex; gap: 28px; align-items: flex-start; }
+.oficina-roster > div { display: flex; flex-direction: column; gap: 8px; }
+.roster-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill.persona { display: inline-flex; align-items: center; gap: 6px; }
+.pill.persona.me { outline: 1px solid var(--brand-accent, #8b5cf6); }
+.pill.persona.working .dot { background: #5ee2a0; }
+.dot.warn { background: #e0a34e; }

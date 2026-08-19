@@ -44,6 +44,14 @@ const shell = {
     ipcRenderer.invoke("shell:oficina:append", type, actor, payload),
   oficinaVerify: (): Promise<{ ok: boolean; events: number; error?: string }> =>
     ipcRenderer.invoke("shell:oficina:verify"),
+  oficinaIdentify: (persona: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("shell:oficina:identify", persona),
+  relayStatus: (): Promise<{
+    configured: boolean;
+    status: "off" | "connecting" | "online";
+    url: string | null;
+    roster: { persona: string; since: string }[];
+  }> => ipcRenderer.invoke("shell:oficina:relay"),
   onOficinaEvent: (cb: (payload: { seq: number; type: string }) => void): (() => void) => {
     const listener = (_e: unknown, payload: { seq: number; type: string }): void => cb(payload);
     ipcRenderer.on("shell:oficina:event", listener as never);

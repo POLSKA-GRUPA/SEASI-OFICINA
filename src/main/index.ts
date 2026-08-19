@@ -30,6 +30,8 @@ import {
 import { checkForUpdate, UpdateError } from "../domains/update/updater";
 import { LocalMcpProxy } from "../domains/mcp-proxy/proxy";
 import { OficinaStore, OficinaError, OFICINA_EVENT_TYPES, type OficinaEventType } from "../domains/oficina/store";
+import { OficinaRelayClient, type RelaySocketLike } from "../domains/oficina/relay-client";
+import WS from "ws";
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
 
@@ -60,6 +62,14 @@ let oficinaStore: OficinaStore | null = null;
 function getOficina(): OficinaStore {
   oficinaStore ??= new OficinaStore(paths().oficina);
   return oficinaStore;
+}
+
+let relayClient: OficinaRelayClient | null = null;
+
+function broadcastOficina(payload: Record<string, unknown>): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    w.webContents.send("shell:oficina:event", payload);
+  }
 }
 
 // ---------------------------------------------------------------- kernel rpc
@@ -278,6 +288,34 @@ app.whenReady().then(() => {
   mkdirSync(p.backups, { recursive: true });
   getVault();
 
+  // relay de tiempo real (opcional: tenant.json relay.url + vault token)
+  const tenantConfig = loadTenantConfig();
+  const relayUrl = tenantConfig.relay?.url;
+  const relayToken = getVault().value("OFICINA_RELAY_TOKEN");
+  if (relayUrl && relayToken) {
+    relayClient = new OficinaRelayClient(
+      getOficina(),
+      { url: relayUrl, tenant: tenantConfig.tenant_id, token: relayToken, persona: "local" },
+      (url) => {
+        const ws = new WS(url);
+        return {
+          send: (d: string) => ws.send(d),
+          close: (code?: number, reason?: string) => ws.close(code, reason),
+          on: (event: string, cb: (arg?: unknown) => void) => {
+            if (event === "message") ws.on("message", (data: unknown) => cb(String(data)));
+            else ws.on(event, cb);
+          },
+        } as RelaySocketLike;
+      },
+      {
+        onRemoteApplied: (ev) => broadcastOficina({ kind: "remote", type: ev.type, actor: ev.actor }),
+        onRoster: (online) => broadcastOficina({ kind: "roster", online }),
+        onStatus: (status) => broadcastOficina({ kind: "status", status }),
+      },
+    );
+    relayClient.start();
+  }
+
   // kernel channel (single, auditable)
   ipcMain.handle(
     "seasi:rpc",
@@ -285,7 +323,7 @@ app.whenReady().then(() => {
   );
 
   // oficina: event store humano local (fichaje/tareas/diario) — append-only
-  ipcMain.handle("shell:oficina:state", () => getOficina().state());
+  ipcMain.handle("shell:oficina:state", (_e, persona?: string) => getOficina().state(undefined, persona));
   ipcMain.handle(
     "shell:oficina:append",
     (_e, type: string, actor: string, payload: unknown): { ok: true; event: unknown } | { ok: false; reason: string; message: string } => {
@@ -294,6 +332,7 @@ app.whenReady().then(() => {
       }
       try {
         const event = getOficina().append(type as OficinaEventType, actor, payload);
+        relayClient?.publish(event);
         for (const w of BrowserWindow.getAllWindows()) {
           w.webContents.send("shell:oficina:event", { seq: event.seq, type: event.type });
         }
@@ -306,6 +345,19 @@ app.whenReady().then(() => {
     },
   );
   ipcMain.handle("shell:oficina:verify", () => getOficina().verify());
+  ipcMain.handle("shell:oficina:identify", (_e, persona: string) => {
+    if (!/^[A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ ._-]{1,40}$/.test(persona)) {
+      return { ok: false, reason: "invalid_payload", message: "persona inválida" };
+    }
+    relayClient?.setPersona(persona);
+    return { ok: true };
+  });
+  ipcMain.handle("shell:oficina:relay", () => ({
+    configured: relayClient !== null,
+    status: relayClient?.status() ?? "off",
+    url: relayClient?.url() ?? null,
+    roster: relayClient?.roster() ?? [],
+  }));
 
   // vault: metadata only — values never leave this process
   ipcMain.handle("shell:vault:list", () => getVault().list());

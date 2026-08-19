@@ -31,6 +31,7 @@ export const VAULT_NAMES = [
   "MCP_CLIENT_ID",
   "MCP_CLIENT_SECRET",
   "MCP_REFRESH_TOKEN",
+  "OFICINA_RELAY_TOKEN",
 ] as const;
 
 export type VaultName = (typeof VAULT_NAMES)[number];
@@ -87,6 +88,12 @@ export class VaultStore {
 
   has(name: string): boolean {
     return name in this.entries;
+  }
+
+  /** Valor plano de UN secret — solo para procesos main (nunca renderer). */
+  value(name: string): string | null {
+    const cipher = this.entries[name];
+    return cipher ? this.crypto.decrypt(cipher) : null;
   }
 
   /** Defense in depth: accidental serialization must never leak secrets. */

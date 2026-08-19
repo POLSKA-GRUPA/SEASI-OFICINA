@@ -86,3 +86,47 @@ Ya listos y verdes sin coste:
 - [x] Superficie IPC auditada en CI
 
 Mientras el gate no esté todo en verde: **ninguna instalación fuera de PGK**.
+
+## Relay de La Oficina (R3 — tiempo real multi-máquina)
+
+El relay es el "cable" entre las máquinas del despacho: presencia (quién está
+conectado) + fan-out de eventos + replay de los últimos 50 al conectar.
+**Sin verdad de negocio**: la verdad persiste en el `oficina.jsonl` de cada
+cliente (hash-chain). Si el relay arde, nadie pierde datos — solo el "en vivo".
+
+### Despliegue (VPS)
+
+```bash
+# en el VPS, con el repo a mano (solo hace falta relay/):
+cd relay && npm install
+RELAY_TOKEN=$(openssl rand -hex 24) PORT=8787 node server.mjs
+```
+
+systemd sugerido (`/etc/systemd/system/oficina-relay.service`):
+
+```ini
+[Unit]
+Description=SEASI Oficina relay
+After=network-online.target
+
+[Service]
+WorkingDirectory=/opt/seasi-oficina/relay
+ExecStart=/usr/bin/node server.mjs
+Environment=RELAY_TOKEN=CAMBIA-ESTO
+Environment=PORT=8787
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+TLS: termina el proxy (Caddy/nginx) y expón `wss://oficina.tudominio.es`.
+Healthcheck: `GET /healthz` → `{"ok":true}`.
+
+### Conectar un despacho
+
+1. `tenant.json` del perfil: añadir `"relay": { "url": "wss://oficina.tudominio.es" }`.
+2. Vault (pestaña Vault de la app): `OFICINA_RELAY_TOKEN` = el token del VPS.
+3. Reiniciar la app. El pill del reloj pasa de `local` a `relay online` y el
+   roster muestra quién está conectado. Sin relay configurado, todo funciona
+   igual en modo local.
