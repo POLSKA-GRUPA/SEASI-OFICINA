@@ -77,15 +77,16 @@ async function cmdEventTail(argv: string[]): Promise<void> {
     let events = await k.eventTail(TENANT, limit);
     for (const e of events) console.log(formatEventLine(e));
     if (!follow) return;
-    let lastSeq = events.length > 0 ? events[events.length - 1]!.seq : 0;
+    let lastSeq = events.reduce((m, e) => Math.max(m, e.seq), 0);
     for (;;) {
       await new Promise((r) => setTimeout(r, 2000));
       events = await k.eventTail(TENANT, 100);
-      for (const e of events) {
-        if (e.seq > lastSeq) {
-          console.log(formatEventLine(e));
-          lastSeq = e.seq;
-        }
+      const fresh = events
+        .filter((e) => e.seq > lastSeq)
+        .sort((a, b) => a.seq - b.seq);
+      for (const e of fresh) {
+        console.log(formatEventLine(e));
+        lastSeq = e.seq;
       }
     }
   });
