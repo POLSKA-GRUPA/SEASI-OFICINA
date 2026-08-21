@@ -31,6 +31,9 @@ import { checkForUpdate, UpdateError } from "../domains/update/updater";
 import { LocalMcpProxy } from "../domains/mcp-proxy/proxy";
 import { OficinaStore, OficinaError, OFICINA_EVENT_TYPES, type OficinaEventType } from "../domains/oficina/store";
 import { OficinaRelayClient, type RelaySocketLike } from "../domains/oficina/relay-client";
+import { writeFileDurableSync } from "../domains/storage/durable-file-write";
+import { readJsonFileBoundedSync } from "../domains/storage/bounded-json-file";
+import { terminateProcessTree } from "../domains/kernel-bridge/process-termination";
 import WS from "ws";
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
@@ -167,7 +170,7 @@ class SafeStoragePersistence implements VaultPersistence {
   load(): Record<string, Buffer> | null {
     if (!existsSync(this.file)) return null;
     try {
-      const raw = JSON.parse(readFileSync(this.file, "utf8")) as Record<string, string>;
+      const raw = readJsonFileBoundedSync(this.file) as Record<string, string>;
       const out: Record<string, Buffer> = {};
       for (const [k, v] of Object.entries(raw)) out[k] = Buffer.from(v, "base64");
       return out;
@@ -178,7 +181,7 @@ class SafeStoragePersistence implements VaultPersistence {
   save(entries: Record<string, Buffer>): void {
     const raw: Record<string, string> = {};
     for (const [k, v] of Object.entries(entries)) raw[k] = v.toString("base64");
-    writeFileSync(this.file, JSON.stringify(raw), { mode: 0o600 });
+    writeFileDurableSync(this.file, JSON.stringify(raw), 0o600);
   }
 }
 
@@ -207,11 +210,11 @@ function getVault(): VaultStore {
 function loadTenantConfig(): TenantConfig {
   const file = paths().tenant;
   if (!existsSync(file)) {
-    writeFileSync(file, JSON.stringify(DEFAULT_CONFIG, null, 2));
+    writeFileDurableSync(file, JSON.stringify(DEFAULT_CONFIG, null, 2));
     return DEFAULT_CONFIG;
   }
   try {
-    return validateConfig(JSON.parse(readFileSync(file, "utf8")));
+    return validateConfig(readJsonFileBoundedSync(file));
   } catch (err) {
     console.error("[tenant] config inválida, usando default:", err);
     return DEFAULT_CONFIG;
@@ -490,7 +493,10 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-  kernelProc?.kill();
+  const proc = kernelProc;
+  if (proc && proc.exitCode === null && typeof proc.pid === "number") {
+    void terminateProcessTree(proc.pid);
+  }
 });
 
 export { VaultError, BackupError };
