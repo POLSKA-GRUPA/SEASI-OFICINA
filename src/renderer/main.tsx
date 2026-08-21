@@ -14,6 +14,15 @@ import {
   type SessionStreamEvent,
 } from "../domains/feed/session-feed-assembler";
 import { filterPalette, type PaletteEntry } from "../domains/quick-open/matcher";
+import {
+  composeFollowUp,
+  createNote,
+  markPendingSent,
+  parseStoredNotes,
+  pendingNotes,
+  removeNote,
+  type ReviewNote,
+} from "../domains/review/notes";
 import type { TenantConfig } from "../domains/branding/config";
 import type { OficinaState } from "../domains/oficina/store";
 import "./ui.css";
@@ -103,6 +112,7 @@ export function App(): JSX.Element {
   const [ledger, setLedger] = useState<{ events: number; ok: boolean } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [usageTotals, setUsageTotals] = useState<{ sessions: number; tokens: number } | null>(null);
+  const [promptSeed, setPromptSeed] = useState<string | null>(null);
 
   // feeds por sesión: cache de presentación (la verdad vive en el ledger)
   const feedsRef = useRef(new Map<string, SessionFeedState>());
@@ -313,13 +323,15 @@ export function App(): JSX.Element {
             selected={selectedSession}
             feed={selectedFeed}
             onSessionCreated={(sid) => { setSelectedSession(sid); reloadSessions(); }}
+            seed={promptSeed}
+            onSeedConsumed={() => setPromptSeed(null)}
           />
         )}
         {view !== "chat" && (
           <section className="view">
             {view === "oficina" && <OficinaView />}
             {view === "uso" && <UsageView />}
-            {view === "brain" && <BrainView />}
+            {view === "brain" && <BrainView onDelegate={(text) => { setPromptSeed(text); setView("chat"); }} />}
             {view === "vault" && <VaultView />}
             {view === "sistema" && <SystemView onTenantLoaded={setTenant} />}
           </section>
@@ -410,6 +422,8 @@ function ChatView(props: {
   selected: string | null;
   feed: SessionFeedState | null;
   onSessionCreated: (sid: string) => void;
+  seed: string | null;
+  onSeedConsumed: () => void;
 }): JSX.Element {
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
@@ -418,6 +432,9 @@ function ChatView(props: {
   const [period, setPeriod] = useState("2026T3");
 
   const [queue, setQueue] = useState<string[]>([]);
+  const [notes, setNotes] = useState<ReviewNote[]>([]);
+  const [annotating, setAnnotating] = useState<number | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
 
   const feedRef = useRef<HTMLDivElement | null>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -427,7 +444,18 @@ function ChatView(props: {
   useEffect(() => {
     setPrompt(props.selected ? localStorage.getItem(`seasi.draft.${props.selected}`) ?? "" : "");
     setQueue([]);
+    setNotes(props.selected ? parseStoredNotes(localStorage.getItem(`seasi.notes.${props.selected}`)) : []);
+    setAnnotating(null);
+    setNoteDraft("");
   }, [props.selected]);
+
+  // semilla de prompt (p.ej. encargo lanzado desde una tarjeta del Brain)
+  useEffect(() => {
+    if (props.seed !== null) {
+      setPrompt(props.seed);
+      props.onSeedConsumed();
+    }
+  }, [props.seed]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!props.selected) return;
     const key = `seasi.draft.${props.selected}`;
@@ -494,6 +522,33 @@ function ChatView(props: {
     setMsg(busy ? "cola vaciada — el turno en curso terminará (cancel en kernel: pendiente en SEASI-CORE)" : "cola vaciada");
   };
 
+  // notas de revisión: locales hasta enviarse como follow-up batch
+  const saveNotes = (next: ReviewNote[]) => {
+    setNotes(next);
+    if (props.selected) localStorage.setItem(`seasi.notes.${props.selected}`, JSON.stringify(next));
+  };
+
+  const addNote = (item: FeedItem) => {
+    const text = noteDraft.trim();
+    if (!text) return;
+    const itemLabel = item.type === "action" ? `acard ${item.name}` : `mensaje ${fmtClock(item.at)}`;
+    const quote = (item.type === "action" ? item.detail : item.lines[0] ?? "").slice(0, 80);
+    const nextId = notes.reduce((m, n) => Math.max(m, n.id), 0) + 1;
+    saveNotes([...notes, createNote({ id: nextId, itemId: item.id, itemLabel, quote, text, createdAt: new Date().toISOString() })]);
+    setAnnotating(null);
+    setNoteDraft("");
+  };
+
+  const pendings = pendingNotes(notes);
+
+  const sendNotes = () => {
+    if (!props.selected || pendings.length === 0) return;
+    const followUp = composeFollowUp(notes);
+    saveNotes(markPendingSent(notes, new Date().toISOString()));
+    if (busy) setQueue((q) => [...q, followUp]);
+    else void runPrompt(props.selected, followUp);
+  };
+
   const turns = props.feed?.turns ?? 0;
   const dots = Array.from({ length: 10 }, (_, i) => i < Math.min(10, turns));
 
@@ -519,7 +574,18 @@ function ChatView(props: {
           {props.selected && itemCount === 0 && !props.feed?.thinking && (
             <div className="empty">Sesión lista. Escribe abajo y el agente empieza a trabajar.</div>
           )}
-          {props.feed?.items.map((item) => <FeedItemView key={item.id} item={item} />)}
+          {props.feed?.items.map((item) => (
+            <FeedItemView
+              key={item.id}
+              item={item}
+              noteCount={notes.filter((n) => n.itemId === item.id).length}
+              annotating={annotating === item.id}
+              onAnnotate={() => { setAnnotating(annotating === item.id ? null : item.id); setNoteDraft(""); }}
+              noteDraft={noteDraft}
+              onNoteDraft={setNoteDraft}
+              onNoteSubmit={() => addNote(item)}
+            />
+          ))}
           {props.feed?.thinking && (
             <div className="thinking"><div className="orb" />el agente está trabajando…</div>
           )}
@@ -534,6 +600,18 @@ function ChatView(props: {
       </div>
 
       <div className="composer">
+        {pendings.length > 0 && (
+          <div className="notesbar">
+            <span className="nb-title">✎ {pendings.length} nota{pendings.length > 1 ? "s" : ""} de revisión</span>
+            {pendings.map((n) => (
+              <span key={n.id} className="nb-note" title={n.text}>
+                {n.itemLabel}
+                <button className="nb-x" title="descartar nota" onClick={() => saveNotes(removeNote(notes, n.id))}>×</button>
+              </span>
+            ))}
+            <button className="nb-send" onClick={sendNotes}>Enviar {pendings.length} nota{pendings.length > 1 ? "s" : ""} ↵</button>
+          </div>
+        )}
         <div className="ctx-dots">
           {dots.map((on, i) => <div key={i} className={`d ${on ? "on" : ""}`} />)}
           <span className="tks">
@@ -590,15 +668,48 @@ function SummaryCard({ feed }: { feed: SessionFeedState }): JSX.Element | null {
   );
 }
 
-function FeedItemView({ item }: { item: FeedItem }): JSX.Element {
+function FeedItemView(props: {
+  item: FeedItem;
+  noteCount: number;
+  annotating: boolean;
+  onAnnotate: () => void;
+  noteDraft: string;
+  onNoteDraft: (v: string) => void;
+  onNoteSubmit: () => void;
+}): JSX.Element {
+  const { item } = props;
   const [open, setOpen] = useState(false);
+
+  const noteBtn = (
+    <button
+      className={`notebtn ${props.noteCount > 0 ? "has" : ""}`}
+      title="anotar para revisión"
+      onClick={(e) => { e.stopPropagation(); props.onAnnotate(); }}
+    >
+      ✎{props.noteCount > 0 ? props.noteCount : ""}
+    </button>
+  );
+
+  const noteForm = props.annotating && (
+    <div className="noteform">
+      <input
+        autoFocus
+        value={props.noteDraft}
+        onChange={(e) => props.onNoteDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); props.onNoteSubmit(); } }}
+        placeholder="Nota de revisión — se enviará al agente en batch"
+      />
+      <button className="b-ok" onClick={props.onNoteSubmit}>Anotar</button>
+    </div>
+  );
+
   if (item.type === "message") {
     const isDiff = looksLikeUnifiedDiff(item.lines);
     return (
       <div className="msg">
         <div className="who">🐉</div>
         <div className="body">
-          <div className="meta-ln"><b>{item.adapter}</b> · {fmtClock(item.at)}</div>
+          <div className="meta-ln"><b>{item.adapter}</b> · {fmtClock(item.at)} {noteBtn}</div>
           {isDiff ? (
             <div className="txt diff">
               {item.lines.map((line, i) => <div key={i} className={classifyDiffLine(line)}>{line}</div>)}
@@ -606,6 +717,7 @@ function FeedItemView({ item }: { item: FeedItem }): JSX.Element {
           ) : (
             <div className="txt">{item.lines.join("\n")}</div>
           )}
+          {noteForm}
         </div>
       </div>
     );
@@ -620,8 +732,10 @@ function FeedItemView({ item }: { item: FeedItem }): JSX.Element {
         <div className="act">{a.name}</div>
         {a.resultSummary && <div className="res">{a.resultSummary}</div>}
         {a.durationMs !== null && <div className="t">{(a.durationMs / 1000).toFixed(1)}s</div>}
+        {noteBtn}
         <div className="ck">{mark}</div>
       </div>
+      {noteForm}
       {open && (a.detail || a.resultSummary) && (
         <div className="acard-detail">
           {a.detail && <>args: {a.detail}{"\n"}</>}
@@ -777,7 +891,7 @@ function McpStatusInline(): JSX.Element {
 
 // ------------------------------------------------------------------- brain
 
-function BrainView(): JSX.Element {
+function BrainView({ onDelegate }: { onDelegate: (text: string) => void }): JSX.Element {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -856,7 +970,14 @@ function BrainView(): JSX.Element {
             <div className="col" key={col}>
               <h4>{col}<span>{boardCards.filter((c) => c.column === col).length}</span></h4>
               {boardCards.filter((c) => c.column === col).map((c) => (
-                <div key={c.id} className={`card-mini ${c.status}`}>{c.title}</div>
+                <div key={c.id} className={`card-mini ${c.status}`}>
+                  {c.title}
+                  <button
+                    className="delegate"
+                    title="encargar a un agente (rellena el composer del Chat)"
+                    onClick={() => onDelegate(`Encargo desde el Brain (${col}): ${c.title}`)}
+                  >→ agente</button>
+                </div>
               ))}
             </div>
           ))}
