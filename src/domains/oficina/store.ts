@@ -27,9 +27,11 @@
  * máquina no puede quedarse bloqueada por el estado local.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { appendLineDurableSync, writeFileDurableSync } from "../storage/durable-file-write";
+import { readJsonFileBoundedSync } from "../storage/bounded-json-file";
 
 const sha256 = (b: string) => createHash("sha256").update(b, "utf8").digest("hex");
 
@@ -183,7 +185,7 @@ export class OficinaStore {
     const sidecar = join(dirname(this.file), "oficina-origin.json");
     try {
       if (existsSync(sidecar)) {
-        const parsed = z.object({ origin: z.string().min(8).max(64) }).parse(JSON.parse(readFileSync(sidecar, "utf8")));
+        const parsed = z.object({ origin: z.string().min(8).max(64) }).parse(readJsonFileBoundedSync(sidecar));
         this.originId = parsed.origin;
         return this.originId;
       }
@@ -192,7 +194,7 @@ export class OficinaStore {
     }
     const fresh = `mc-${randomUUID().slice(0, 8)}`;
     mkdirSync(dirname(sidecar), { recursive: true });
-    writeFileSync(sidecar, JSON.stringify({ origin: fresh }), "utf8");
+    writeFileDurableSync(sidecar, JSON.stringify({ origin: fresh }));
     this.originId = fresh;
     return fresh;
   }
@@ -343,7 +345,7 @@ export class OficinaStore {
     };
     const ev: StoredEvent = { ...base, hash: eventHash(base) };
     mkdirSync(dirname(this.file), { recursive: true });
-    appendFileSync(this.file, `${JSON.stringify(ev)}\n`, "utf8");
+    appendLineDurableSync(this.file, `${JSON.stringify(ev)}\n`);
     if (this.cache) this.cache.push(ev);
     return ev;
   }
