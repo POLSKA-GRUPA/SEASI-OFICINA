@@ -13,6 +13,7 @@ import {
   type SessionFeedState,
   type SessionStreamEvent,
 } from "../domains/feed/session-feed-assembler";
+import { filterPalette, type PaletteEntry } from "../domains/quick-open/matcher";
 import type { TenantConfig } from "../domains/branding/config";
 import type { OficinaState } from "../domains/oficina/store";
 import "./ui.css";
@@ -100,6 +101,8 @@ export function App(): JSX.Element {
   const [pending, setPending] = useState<HitlPauseLike[]>([]);
   const [chatUnread, setChatUnread] = useState(false);
   const [ledger, setLedger] = useState<{ events: number; ok: boolean } | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [usageTotals, setUsageTotals] = useState<{ sessions: number; tokens: number } | null>(null);
 
   // feeds por sesión: cache de presentación (la verdad vive en el ledger)
   const feedsRef = useRef(new Map<string, SessionFeedState>());
@@ -181,11 +184,32 @@ export function App(): JSX.Element {
     return () => clearInterval(t);
   }, [reloadPending]);
 
-  // atajos: mod+1..6 cambian de vista (⌘ en macOS, Ctrl en el resto)
+  // uso global (autoridad: kernel) para la status bar
+  useEffect(() => {
+    const load = () => {
+      kernel.usageSummary("pgk").then((rows) => {
+        setUsageTotals({
+          sessions: rows.length,
+          tokens: rows.reduce((acc, r) => acc + r.input_tokens + r.output_tokens, 0),
+        });
+      }).catch(() => undefined);
+    };
+    load();
+    const t = setInterval(load, 10000);
+    return () => clearInterval(t);
+  }, []);
+
+  // atajos: mod+1..6 cambian de vista; mod+K abre Quick Open (⌘ en macOS, Ctrl en el resto)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setPaletteOpen(false); return; }
       const mod = IS_MAC ? e.metaKey : e.ctrlKey;
       if (!mod) return;
+      if (e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      }
       const target = DOCK[Number(e.key) - 1];
       if (target) {
         e.preventDefault();
@@ -203,6 +227,26 @@ export function App(): JSX.Element {
 
   const phaseFor = (sid: string): SessionFeedState["phase"] | null =>
     feedsRef.current.get(sid)?.phase ?? null;
+
+  const startNewSession = () => { setSelectedSession(null); setView("chat"); };
+
+  const paletteEntries: PaletteEntry[] = [
+    { id: "action:new-session", kind: "action", title: "Nueva sesión", subtitle: "crear un encargo nuevo en Chat", keywords: "crear session nueva" },
+    ...DOCK.map((d, i): PaletteEntry => ({ id: `view:${d.view}`, kind: "view", title: d.title, subtitle: `vista · ${MOD_LABEL}${i + 1}` })),
+    ...sessions.map((s): PaletteEntry => ({
+      id: `session:${String(s.session_id)}`,
+      kind: "session",
+      title: s.clientLabel,
+      subtitle: `${s.period_ref} · ${s.adapter} · ${String(s.session_id).slice(0, 8)}`,
+    })),
+  ];
+
+  const onPalettePick = (entry: PaletteEntry) => {
+    setPaletteOpen(false);
+    if (entry.id === "action:new-session") { startNewSession(); return; }
+    if (entry.kind === "view") { setView(entry.id.slice("view:".length) as View); return; }
+    if (entry.kind === "session") { setSelectedSession(entry.id.slice("session:".length)); setView("chat"); }
+  };
 
   return (
     <div className="app">
@@ -232,7 +276,10 @@ export function App(): JSX.Element {
       </nav>
 
       <aside className="agents">
-        <div className="label">Agentes <span className="kbd">{MOD_LABEL}1-{DOCK.length}</span></div>
+        <div className="label">
+          Agentes <span className="kbd">{MOD_LABEL}K</span>
+          <button className="newsess" title="Nueva sesión" onClick={startNewSession}>+</button>
+        </div>
         {sessions.length === 0 && <div className="rempty" style={{ margin: "4px 8px" }}>Sin sesiones — crea la primera en Chat.</div>}
         {sessions.map((s) => {
           const sid = String(s.session_id);
@@ -287,8 +334,72 @@ export function App(): JSX.Element {
         <span>tokens <span className="val">{(selectedFeed?.inputTokens ?? 0) + (selectedFeed?.outputTokens ?? 0)}</span></span>
         <span>hitl <span className={pending.length > 0 ? "lv" : "val"}>{pending.length}</span></span>
         <div className="grow" />
+        {usageTotals && (
+          <span>uso total <span className="val">{usageTotals.tokens} tk · {usageTotals.sessions} ses.</span></span>
+        )}
         <span>local-first · sin telemetría · {tenant?.tenant_id ?? "pgk"}</span>
       </footer>
+
+      {paletteOpen && <QuickOpen entries={paletteEntries} onPick={onPalettePick} onClose={() => setPaletteOpen(false)} />}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------- quick open
+
+function QuickOpen(props: {
+  entries: PaletteEntry[];
+  onPick: (entry: PaletteEntry) => void;
+  onClose: () => void;
+}): JSX.Element {
+  const [q, setQ] = useState("");
+  const [idx, setIdx] = useState(0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  const results = filterPalette(props.entries, q, 8);
+  const sel = results.length === 0 ? 0 : Math.min(idx, results.length - 1);
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setIdx((i) => Math.min(i + 1, results.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setIdx((i) => Math.max(i - 1, 0)); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      const picked = results[sel];
+      if (picked) props.onPick(picked);
+    }
+  };
+
+  const badge = (kind: PaletteEntry["kind"]): string =>
+    kind === "view" ? "vista" : kind === "session" ? "sesión" : "acción";
+
+  return (
+    <div className="qo-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) props.onClose(); }}>
+      <div className="qo">
+        <input
+          ref={inputRef}
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setIdx(0); }}
+          onKeyDown={onKeyDown}
+          placeholder="Ir a vista, sesión o acción…"
+          spellCheck={false}
+        />
+        <div className="qo-list">
+          {results.length === 0 && <div className="qo-empty">Sin resultados</div>}
+          {results.map((r, i) => (
+            <button
+              key={r.id}
+              className={`qo-item ${i === sel ? "on" : ""}`}
+              onMouseEnter={() => setIdx(i)}
+              onClick={() => props.onPick(r)}
+            >
+              <span className="qo-kind">{badge(r.kind)}</span>
+              <span className="qo-title">{r.title}</span>
+              {r.subtitle && <span className="qo-sub">{r.subtitle}</span>}
+            </button>
+          ))}
+        </div>
+        <div className="qo-hint">↑↓ navegar · ↵ abrir · esc cerrar</div>
+      </div>
     </div>
   );
 }
