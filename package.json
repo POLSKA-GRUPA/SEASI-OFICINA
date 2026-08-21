@@ -6,9 +6,11 @@
   "description": "Shell de escritorio local-first para el kernel SEASI-CORE — La Oficina: fichaje, diario y agentes del equipo en una sola app. Electron + TypeScript estricto + React.",
   "type": "module",
   "main": "out/main/index.js",
+  "bin": { "seasi": "out/cli/seasi.js" },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "cli:build": "vite build --config vite.cli.config.mts",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
