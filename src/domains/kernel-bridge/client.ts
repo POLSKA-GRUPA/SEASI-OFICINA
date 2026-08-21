@@ -67,6 +67,20 @@ export class KernelClient {
     return this.call("seasi.session.start", p, AgentSessionSchema);
   }
 
+  async runSession(p: {
+    tenant_id: string;
+    session_id: string;
+    prompt: string;
+    budget_turns?: number;
+  }): Promise<{ session_id: string; events: unknown[] }> {
+    const raw = await this.call("seasi.session.run", p, null);
+    const obj = raw as { session_id?: unknown; events?: unknown };
+    if (typeof obj.session_id !== "string") {
+      throw new KernelError(-32603, "session.run: malformed response");
+    }
+    return { session_id: obj.session_id, events: Array.isArray(obj.events) ? obj.events : [] };
+  }
+
   async listPendingHitl(tenantId: string): Promise<HitlPauseLike[]> {
     const raw = await this.invoke("seasi.hitl.list", { tenant_id: tenantId });
     const obj = raw as { pending?: unknown };
