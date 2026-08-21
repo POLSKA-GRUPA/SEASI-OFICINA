@@ -1,7 +1,17 @@
 import { createRoot } from "react-dom/client";
-import { StrictMode, useCallback, useEffect, useMemo, useState, type JSX } from "react";
-import { KernelClient, KernelError, type AgentSessionLike, type HitlPauseLike, type LedgerEventLike, type UsageRow } from "../domains/kernel-bridge/client";
+import { StrictMode, useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { KernelClient, KernelError, type AgentSessionLike, type HitlPauseLike, type UsageRow } from "../domains/kernel-bridge/client";
 import { buildGraph, extractWikilinks, parseRoadmapBoard, type BoardCard } from "../domains/brain/parser";
+import {
+  classifyDiffLine,
+  emptyFeed,
+  looksLikeUnifiedDiff,
+  reduceFeed,
+  type FeedAction,
+  type FeedItem,
+  type SessionFeedState,
+  type SessionStreamEvent,
+} from "../domains/feed/session-feed-assembler";
 import type { TenantConfig } from "../domains/branding/config";
 import type { OficinaState } from "../domains/oficina/store";
 import "./ui.css";
@@ -46,42 +56,64 @@ const kernel = new KernelClient((m, p) => {
   return bridge.call(m, p);
 });
 
-function BrandMark({ size = 22 }: { size?: number }): JSX.Element {
+const IS_MAC = navigator.userAgent.includes("Mac");
+const MOD_LABEL = IS_MAC ? "⌘" : "Ctrl+";
+
+function BrandMark({ size = 18 }: { size?: number }): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden>
-      <rect width="512" height="512" rx="112" fill="#17181b" />
-      <path d="M256 76 L404 162 L404 350 L256 436 L108 350 L108 162 Z" fill="none"
-        stroke="url(#brand-g)" strokeWidth="26" strokeLinejoin="round" />
-      <defs>
-        <linearGradient id="brand-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="var(--brand-primary)" />
-          <stop offset="1" stopColor="var(--brand-accent)" />
-        </linearGradient>
-      </defs>
-      <g stroke="#74767c" strokeWidth="14" strokeLinecap="round">
-        <line x1="256" y1="170" x2="200" y2="300" /><line x1="256" y1="170" x2="312" y2="300" />
-        <line x1="200" y1="300" x2="256" y2="350" /><line x1="312" y1="300" x2="256" y2="350" />
-      </g>
-      <circle cx="256" cy="170" r="34" fill="var(--brand-primary)" />
-      <circle cx="256" cy="350" r="38" fill="var(--brand-accent)" />
+      <rect width="512" height="512" rx="120" fill="#17171b" />
+      <path d="M256 86 L398 168 L398 344 L256 426 L114 344 L114 168 Z" fill="none"
+        stroke="var(--brand-primary)" strokeWidth="24" strokeLinejoin="round" />
+      <circle cx="256" cy="180" r="30" fill="var(--brand-primary)" />
+      <circle cx="256" cy="340" r="26" fill="#1d1d22" stroke="var(--brand-primary)" strokeWidth="12" />
     </svg>
   );
 }
 
-type Tab = "oficina" | "rail" | "hitl" | "uso" | "brain" | "vault" | "sistema";
+type View = "chat" | "oficina" | "uso" | "brain" | "vault" | "sistema";
+
+const DOCK: { view: View; icon: string; title: string }[] = [
+  { view: "chat", icon: "◧", title: "Chat" },
+  { view: "oficina", icon: "▦", title: "Oficina" },
+  { view: "uso", icon: "▤", title: "Uso" },
+  { view: "brain", icon: "◈", title: "Brain" },
+  { view: "vault", icon: "▥", title: "Vault" },
+  { view: "sistema", icon: "⚙", title: "Sistema" },
+];
+
+const fmtClock = (iso: string): string => {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+type SessionRow = AgentSessionLike & { clientLabel: string };
 
 export function App(): JSX.Element {
-  const [tab, setTab] = useState<Tab>("oficina");
+  const [view, setView] = useState<View>("chat");
   const [tenant, setTenant] = useState<TenantConfig | null>(null);
   const [kernelVersion, setKernelVersion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [selectedSession, setSelectedSession] = useState<string | null>(null);
+  const [pending, setPending] = useState<HitlPauseLike[]>([]);
+  const [chatUnread, setChatUnread] = useState(false);
+  const [ledger, setLedger] = useState<{ events: number; ok: boolean } | null>(null);
+
+  // feeds por sesión: cache de presentación (la verdad vive en el ledger)
+  const feedsRef = useRef(new Map<string, SessionFeedState>());
+  const [feedTick, setFeedTick] = useState(0);
+  const viewRef = useRef(view);
+  viewRef.current = view;
 
   useEffect(() => {
     if (!bridge) { setError("preload no disponible (¿ejecución fuera de Electron?)"); return; }
     bridge.shell.branding().then((b) => setTenant(b as TenantConfig)).catch((e: unknown) => setError(String(e)));
-    kernel.version().then((v) => setKernelVersion(v.kernel_version)).catch(() => setKernelVersion("kernel no disponible"));
+    kernel.version().then((v) => setKernelVersion(v.kernel_version)).catch(() => setKernelVersion(null));
   }, []);
 
+  // marca white-label: SOLO variables de marca; los tokens de confianza
+  // (--v/--ok/--warn/--danger) son constantes del producto
   const brandName = tenant?.branding.name ?? "SEASI";
   useEffect(() => {
     if (tenant?.branding.colors) {
@@ -91,53 +123,23 @@ export function App(): JSX.Element {
     }
   }, [tenant]);
 
-  return (
-    <>
-      <aside className="rail">
-        <RailPanel />
-      </aside>
-      <main className="content">
-        <header className="topbar">
-          <div className="brand">
-            <BrandMark />
-            <span className="word">{brandName.split(" — ")[0]} <em>Oficina</em></span>
-          </div>
-          <span className="pill"><span className={`dot ${kernelVersion ? "" : "off"}`} />{kernelVersion ? `kernel ${kernelVersion}` : "kernel…"}</span>
-          <span className="pill">shell v{bridge?.version ?? "?"}</span>
-          <div className="spacer" />
-          <span className="pill">{tenant?.tenant_id ?? "…"}</span>
-        </header>
-        <nav className="tabs">
-          {(["oficina", "rail", "hitl", "uso", "brain", "vault", "sistema"] as Tab[]).map((t) => (
-            <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-              {t === "oficina" ? "Oficina" : t === "rail" ? "Sesiones" : t === "hitl" ? "HITL" : t === "uso" ? "Uso" : t === "vault" ? "Vault" : t === "sistema" ? "Sistema" : "Brain"}
-            </button>
-          ))}
-        </nav>
-        <section className="view">
-          {error && <div className="banner err">{error}</div>}
-          {tab === "oficina" && <OficinaView />}
-          {tab === "rail" && <RailView />}
-          {tab === "hitl" && <HitlView />}
-          {tab === "uso" && <UsageView />}
-          {tab === "brain" && <BrainView />}
-          {tab === "vault" && <VaultView />}
-          {tab === "sistema" && <SystemView onTenantLoaded={setTenant} />}
-        </section>
-      </main>
-    </>
-  );
-}
+  // streaming del kernel → assembler incremental por sesión
+  useEffect(() => {
+    if (!bridge) return;
+    return bridge.shell.onSessionEvent(({ params }) => {
+      const p = params as { session_id?: string; event?: SessionStreamEvent };
+      if (!p.event) return;
+      const sid = p.session_id ?? String(p.event.session_id ?? "");
+      if (!sid) return;
+      const prev = feedsRef.current.get(sid) ?? emptyFeed();
+      feedsRef.current.set(sid, reduceFeed(prev, p.event));
+      setFeedTick((t) => t + 1);
+      if (viewRef.current !== "chat") setChatUnread(true);
+    });
+  }, []);
 
-// ------------------------------------------------------------------- rail
-
-type SessionRow = AgentSessionLike & { clientLabel: string };
-
-function RailPanel(): JSX.Element {
-  const [sessions, setSessions] = useState<SessionRow[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
-
-  const reload = useCallback(() => {
+  // sesiones desde el ledger (autoridad: kernel)
+  const reloadSessions = useCallback(() => {
     kernel.eventTail("pgk", 200).then((events) => {
       const byId = new Map<string, SessionRow>();
       for (const ev of [...events].reverse()) {
@@ -148,198 +150,386 @@ function RailPanel(): JSX.Element {
         }
       }
       setSessions([...byId.values()]);
+      setLedger({ events: events.length, ok: true });
     }).catch(() => setSessions([]));
   }, []);
+  useEffect(() => { reloadSessions(); const t = setInterval(reloadSessions, 5000); return () => clearInterval(t); }, [reloadSessions]);
 
-  useEffect(() => { reload(); const t = setInterval(reload, 5000); return () => clearInterval(t); }, [reload]);
-
-  const grouped = useMemo(() => {
-    const m = new Map<string, SessionRow[]>();
-    for (const s of sessions) {
-      const list = m.get(s.clientLabel) ?? [];
-      list.push(s);
-      m.set(s.clientLabel, list);
+  // cola HITL + notificación nativa cuando entra una pausa nueva
+  const knownPauses = useRef(new Set<string>());
+  const reloadPending = useCallback(() => {
+    kernel.listPendingHitl("pgk").then((rows) => {
+      setPending(rows);
+      for (const p of rows) {
+        const id = String(p.pause_id);
+        if (!knownPauses.current.has(id)) {
+          knownPauses.current.add(id);
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            new Notification("Aprobación pendiente", { body: `${p.capability_id} espera decisión humana` });
+          }
+        }
+      }
+    }).catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      void Notification.requestPermission();
     }
-    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [sessions]);
+    reloadPending();
+    const t = setInterval(reloadPending, 4000);
+    return () => clearInterval(t);
+  }, [reloadPending]);
+
+  // atajos: mod+1..6 cambian de vista (⌘ en macOS, Ctrl en el resto)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = IS_MAC ? e.metaKey : e.ctrlKey;
+      if (!mod) return;
+      const target = DOCK[Number(e.key) - 1];
+      if (target) {
+        e.preventDefault();
+        setView(target.view);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => { if (view === "chat") setChatUnread(false); }, [view, feedTick]);
+
+  const selectedFeed = selectedSession ? feedsRef.current.get(selectedSession) ?? null : null;
+  const selectedRow = sessions.find((s) => String(s.session_id) === selectedSession) ?? null;
+
+  const phaseFor = (sid: string): SessionFeedState["phase"] | null =>
+    feedsRef.current.get(sid)?.phase ?? null;
 
   return (
-    <div className="client-list">
-      <h3>Clientes / Sesiones</h3>
-      {grouped.length === 0 && <div className="empty">Sin sesiones todavía.<br />Crea la primera en la pestaña Sesiones.</div>}
-      {grouped.map(([client, rows]) => (
-        <div key={client}>
-          <div className="client" onClick={() => setSelected(client)}>
-            <strong>{client}</strong>
-            <span className="nif">{rows.length} ses.</span>
-          </div>
-          {selected === client &&
-            rows.map((r) => (
-              <div key={String(r.session_id)} className="client" style={{ paddingLeft: 22 }}>
-                <span className="mono">{r.period_ref}</span>
-                <span className={`chip state-${r.state}`}>{String(r.state).replace("_", " ")}</span>
+    <div className="app">
+      <header className="topbar">
+        <div className="brand"><BrandMark /> {brandName.split(" — ")[0]} <em>Oficina</em></div>
+        {selectedRow && (
+          <div className="crumb"><b>{selectedRow.clientLabel}</b> › {selectedRow.period_ref}</div>
+        )}
+        <div className="grow" />
+        <span className="pill"><span className={`dot ${kernelVersion ? "" : "off"}`} />{kernelVersion ? `kernel ${kernelVersion}` : "kernel…"}</span>
+        <span className="pill"><span className={`dot ${ledger?.ok ? "v" : "off"}`} />ledger {ledger ? "✓" : "…"}</span>
+        <span className="pill">{tenant?.tenant_id ?? "…"}</span>
+      </header>
+
+      <nav className="dock">
+        {DOCK.map((d, i) => (
+          <button
+            key={d.view}
+            className={`dk ${view === d.view ? "on" : ""}`}
+            title={`${d.title} (${MOD_LABEL}${i + 1})`}
+            onClick={() => setView(d.view)}
+          >
+            {d.icon}
+            {d.view === "chat" && chatUnread && view !== "chat" && <span className="unread" />}
+          </button>
+        ))}
+      </nav>
+
+      <aside className="agents">
+        <div className="label">Agentes <span className="kbd">{MOD_LABEL}1-{DOCK.length}</span></div>
+        {sessions.length === 0 && <div className="rempty" style={{ margin: "4px 8px" }}>Sin sesiones — crea la primera en Chat.</div>}
+        {sessions.map((s) => {
+          const sid = String(s.session_id);
+          const phase = phaseFor(sid);
+          const stClass = phase === "running" ? "run" : phase === "completed" ? "done" : phase === "paused_hitl" ? "warn" : phase === "failed" ? "fail" : "idle";
+          return (
+            <button
+              key={sid}
+              className={`agent ${selectedSession === sid ? "on" : ""}`}
+              onClick={() => { setSelectedSession(sid); setView("chat"); }}
+            >
+              <div className="avatar">{s.adapter === "echo" ? "▣" : "🐉"}</div>
+              <div>
+                <div className="nm">{s.clientLabel}</div>
+                <div className="rl">{s.period_ref} · {s.adapter}</div>
               </div>
-            ))}
-        </div>
-      ))}
+              <div className={`st ${stClass}`} />
+            </button>
+          );
+        })}
+        <div className="label" style={{ marginTop: 10 }}>Clientes</div>
+        {[...new Set(sessions.map((s) => s.clientLabel))].map((c) => (
+          <button key={c} className="client">{c} <span className="nif">{sessions.filter((s) => s.clientLabel === c).length} ses.</span></button>
+        ))}
+      </aside>
+
+      <main className={`center ${view === "chat" ? "" : "wide"}`}>
+        {error && <div className="banner err" style={{ margin: 12 }}>{error}</div>}
+        {view === "chat" && (
+          <ChatView
+            selected={selectedSession}
+            feed={selectedFeed}
+            onSessionCreated={(sid) => { setSelectedSession(sid); reloadSessions(); }}
+          />
+        )}
+        {view !== "chat" && (
+          <section className="view">
+            {view === "oficina" && <OficinaView />}
+            {view === "uso" && <UsageView />}
+            {view === "brain" && <BrainView />}
+            {view === "vault" && <VaultView />}
+            {view === "sistema" && <SystemView onTenantLoaded={setTenant} />}
+          </section>
+        )}
+      </main>
+
+      {view === "chat" && <RightPanel pending={pending} onDecided={reloadPending} feed={selectedFeed} session={selectedRow} />}
+
+      <footer className="status">
+        <span>sesión <span className="val">{selectedSession ? selectedSession.slice(0, 8) : "—"}</span></span>
+        <span>turnos <span className="val">{selectedFeed?.turns ?? 0}</span></span>
+        <span>tokens <span className="val">{(selectedFeed?.inputTokens ?? 0) + (selectedFeed?.outputTokens ?? 0)}</span></span>
+        <span>hitl <span className={pending.length > 0 ? "lv" : "val"}>{pending.length}</span></span>
+        <div className="grow" />
+        <span>local-first · sin telemetría · {tenant?.tenant_id ?? "pgk"}</span>
+      </footer>
     </div>
   );
 }
 
-function RailView(): JSX.Element {
-  const [clientRef, setClientRef] = useState("");
-  const [period, setPeriod] = useState("2026T3");
+// ------------------------------------------------------------------- chat
+
+function ChatView(props: {
+  selected: string | null;
+  feed: SessionFeedState | null;
+  onSessionCreated: (sid: string) => void;
+}): JSX.Element {
+  const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [log, setLog] = useState<LedgerEventLike[]>([]);
-  const [prompt, setPrompt] = useState("");
-  const [live, setLive] = useState<{ method: string; params: unknown }[]>([]);
+  const [clientRef, setClientRef] = useState("");
+  const [period, setPeriod] = useState("2026T3");
 
-  const tailLog = useCallback(() => {
-    kernel.eventTail("pgk", 40).then(setLog).catch(() => undefined);
-  }, []);
+  const feedRef = useRef<HTMLDivElement | null>(null);
+  const [atBottom, setAtBottom] = useState(true);
+  const itemCount = props.feed?.items.length ?? 0;
 
-  useEffect(() => { tailLog(); const t = setInterval(tailLog, 4000); return () => clearInterval(t); }, [tailLog]);
-
-  // Streaming en vivo: notificaciones del kernel mientras corre una sesión
+  // autoscroll: pegado abajo sigue el stream; si el humano sube, no se le roba el scroll
   useEffect(() => {
-    if (!bridge) return;
-    const off = bridge.shell.onSessionEvent((payload) => {
-      setLive((prev) => [...prev.slice(-499), payload]);
-    });
-    return off;
-  }, []);
+    const el = feedRef.current;
+    if (el && atBottom) el.scrollTop = el.scrollHeight;
+  }, [itemCount, atBottom, props.feed?.thinking]);
 
-  const start = async () => {
+  const onScroll = () => {
+    const el = feedRef.current;
+    if (!el) return;
+    setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
+  };
+
+  const jumpToLatest = () => {
+    const el = feedRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    setAtBottom(true);
+  };
+
+  const createSession = async () => {
     setBusy(true); setMsg(null);
     try {
       const s = await kernel.startSession({ tenant_id: "pgk", client_ref: clientRef || "SIN-NIF", period_ref: period });
-      setMsg(`sesión ${String(s.session_id).slice(0, 8)} creada para ${s.client_ref} ${s.period_ref}`);
-      tailLog();
+      props.onSessionCreated(String(s.session_id));
+      setMsg(null);
     } catch (e) {
       setMsg(e instanceof KernelError ? e.message : String(e));
     } finally { setBusy(false); }
   };
 
+  const send = async () => {
+    if (!props.selected || !prompt.trim() || busy) return;
+    const text = prompt.trim();
+    setBusy(true); setMsg(null); setPrompt("");
+    try {
+      await kernel.runSession({ tenant_id: "pgk", session_id: props.selected, prompt: text });
+    } catch (e) {
+      setMsg(e instanceof KernelError ? e.message : String(e));
+    } finally { setBusy(false); }
+  };
+
+  const turns = props.feed?.turns ?? 0;
+  const dots = Array.from({ length: 10 }, (_, i) => i < Math.min(10, turns));
+
   return (
-    <div>
-      <div className="card">
-        <p className="kicker">Nueva sesión</p>
-        <div className="row">
-          <div className="field" style={{ flex: 2 }}>
-            <label>Cliente (NIF/CIF)</label>
-            <input value={clientRef} onChange={(e) => setClientRef(e.target.value)} placeholder="B82211806" />
-          </div>
-          <div className="field" style={{ flex: 1 }}>
-            <label>Periodo</label>
-            <input value={period} onChange={(e) => setPeriod(e.target.value)} placeholder="2026T3" />
-          </div>
-          <div style={{ alignSelf: "flex-end", paddingBottom: 12 }}>
-            <button className="primary" disabled={busy} onClick={() => void start()}>Crear sesión</button>
-          </div>
-        </div>
-        {msg && <p className="meta">{msg}</p>}
-      </div>
-      <div className="card">
-        <p className="kicker">Streaming en vivo</p>
-        <div className="log">
-          {live.length === 0 && <span>— sin sesión en curso; lanza un run y los eventos llegan aquí en tiempo real —</span>}
-          {[...live].slice(-25).reverse().map((n, i) => {
-            const ev = (n.params as { event?: { kind?: string; data?: Record<string, unknown> } }) ?? {};
-            return (
-              <div key={`${i}-${ev.event?.kind}`}>
-                <span className={`type kind-${ev.event?.kind ?? ""}`}>{ev.event?.kind ?? n.method}</span>{"  "}
-                <span>{new Date().toLocaleTimeString()}</span>{"  "}
-                <span>{JSON.stringify(ev.event?.data ?? {}).slice(0, 90)}</span>
+    <>
+      <div className="feedwrap">
+        <div className="feed" ref={feedRef} onScroll={onScroll}>
+          {!props.selected && (
+            <div className="card" style={{ maxWidth: 460, margin: "40px auto" }}>
+              <p className="kicker">Nueva sesión</p>
+              <div className="field">
+                <label>Cliente (NIF/CIF)</label>
+                <input value={clientRef} onChange={(e) => setClientRef(e.target.value)} placeholder="B82211806" />
               </div>
-            );
-          })}
-        </div>
-      </div>
-      <div className="card">
-        <p className="kicker">Ledger del kernel</p>
-        <div className="log">
-          {log.length === 0 && <span className="meta">— vacío —</span>}
-          {[...log].reverse().map((e) => (
-            <div key={e.event_id}>
-              <span className="type">{e.event_type}</span>{" "}
-              <span className="mono">{new Date(e.occurred_at).toLocaleTimeString()}</span>{" "}
-              <span className="mono">{e.hash.slice(0, 10)}…</span>
+              <div className="field">
+                <label>Periodo</label>
+                <input value={period} onChange={(e) => setPeriod(e.target.value)} placeholder="2026T3" />
+              </div>
+              <button className="primary" disabled={busy} onClick={() => void createSession()}>Crear sesión</button>
+              {msg && <p className="meta" style={{ marginTop: 8 }}>{msg}</p>}
             </div>
-          ))}
+          )}
+          {props.selected && itemCount === 0 && !props.feed?.thinking && (
+            <div className="empty">Sesión lista. Escribe abajo y el agente empieza a trabajar.</div>
+          )}
+          {props.feed?.items.map((item) => <FeedItemView key={item.id} item={item} />)}
+          {props.feed?.thinking && (
+            <div className="thinking"><div className="orb" />el agente está trabajando…</div>
+          )}
+          {props.feed && !props.feed.thinking && props.feed.phase !== "idle" && props.feed.phase !== "running" && (
+            <div className="thinking" style={{ opacity: .8 }}>
+              {props.feed.phase === "completed" && <>✓ sesión completada</>}
+              {props.feed.phase === "paused_hitl" && <>⏸ pausada — esperando aprobación en el panel derecho</>}
+              {props.feed.phase === "failed" && <span style={{ color: "var(--danger)" }}>✗ sesión fallida</span>}
+              {props.feed.phase === "cancelled" && <>⊘ sesión cancelada</>}
+            </div>
+          )}
         </div>
-        <div className="field" style={{ marginTop: 10 }}>
-          <label>Prompt (envía una tarea al kernel — requiere sesión previa)</label>
-          <textarea rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="p. ej. clasifica las facturas de 2026T3 de B82211806" />
-        </div>
-        <button className="ghost" onClick={() => { setPrompt(""); setMsg("run directo deshabilitado hasta elegir sesión (HITL gobierna los efectos)"); }}>Encolar tarea</button>
+        {!atBottom && itemCount > 0 && (
+          <button className="jump" onClick={jumpToLatest}>↓ ir a lo último</button>
+        )}
       </div>
-    </div>
+
+      <div className="composer">
+        <div className="ctx-dots">
+          {dots.map((on, i) => <div key={i} className={`d ${on ? "on" : ""}`} />)}
+          <span className="tks">
+            {(props.feed?.inputTokens ?? 0) + (props.feed?.outputTokens ?? 0)} tokens · {turns} turnos
+          </span>
+        </div>
+        <div className="inbox">
+          <textarea
+            rows={2}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
+            }}
+            placeholder={props.selected ? "Pide lo que quieras — HITL protege todo efecto externo" : "Crea una sesión arriba para empezar"}
+            disabled={!props.selected || busy}
+          />
+          <div className="row">
+            <span className="bpill model">kernel JSON-RPC</span>
+            <span className="bpill">HITL ⏸ efectos</span>
+            <span className="bpill">ledger ✓</span>
+            {msg && <span className="bpill" style={{ color: "var(--danger)" }}>{msg.slice(0, 60)}</span>}
+            <button className="send" disabled={!props.selected || !prompt.trim() || busy} onClick={() => void send()}>
+              Enviar ↵
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
-// ------------------------------------------------------------------- hitl
+function FeedItemView({ item }: { item: FeedItem }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  if (item.type === "message") {
+    const isDiff = looksLikeUnifiedDiff(item.lines);
+    return (
+      <div className="msg">
+        <div className="who">🐉</div>
+        <div className="body">
+          <div className="meta-ln"><b>{item.adapter}</b> · {fmtClock(item.at)}</div>
+          {isDiff ? (
+            <div className="txt diff">
+              {item.lines.map((line, i) => <div key={i} className={classifyDiffLine(line)}>{line}</div>)}
+            </div>
+          ) : (
+            <div className="txt">{item.lines.join("\n")}</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  const a: FeedAction = item;
+  const statusClass = a.status === "running" ? "running" : a.status === "warn" ? "warn" : a.status === "fail" ? "fail" : "";
+  const mark = a.status === "running" ? "…" : a.status === "warn" ? "⏳" : a.status === "fail" ? "✗" : "✓";
+  return (
+    <>
+      <div className={`acard ${statusClass}`} onClick={() => setOpen((o) => !o)} title={open ? "plegar" : "expandir"}>
+        <div className="ic">{a.status === "warn" ? "⏸" : "⚙"}</div>
+        <div className="act">{a.name}</div>
+        {a.resultSummary && <div className="res">{a.resultSummary}</div>}
+        {a.durationMs !== null && <div className="t">{(a.durationMs / 1000).toFixed(1)}s</div>}
+        <div className="ck">{mark}</div>
+      </div>
+      {open && (a.detail || a.resultSummary) && (
+        <div className="acard-detail">
+          {a.detail && <>args: {a.detail}{"\n"}</>}
+          {a.resultSummary && <>result: {a.resultSummary}</>}
+        </div>
+      )}
+    </>
+  );
+}
 
-function HitlView(): JSX.Element {
-  const [pending, setPending] = useState<HitlPauseLike[]>([]);
+// ------------------------------------------------------------- panel derecho
+
+function RightPanel(props: {
+  pending: HitlPauseLike[];
+  onDecided: () => void;
+  feed: SessionFeedState | null;
+  session: SessionRow | null;
+}): JSX.Element {
   const [msg, setMsg] = useState<string | null>(null);
-  const [actor, setActor] = useState("asesor");
-
-  const reload = useCallback(() => {
-    kernel.listPendingHitl("pgk").then(setPending).catch((e: unknown) => setMsg(String(e)));
-  }, []);
-  useEffect(() => { reload(); const t = setInterval(reload, 4000); return () => clearInterval(t); }, [reload]);
+  const [actor] = useState(() => localStorage.getItem("oficina.persona") ?? "asesor");
 
   const decide = async (pause: HitlPauseLike, decision: "approved" | "rejected") => {
     try {
       await kernel.decideHitl({ pause_id: String(pause.pause_id), decision, actor });
       setMsg(`${decision === "approved" ? "✓ aprobado" : "✗ rechazado"} · ${pause.capability_id}`);
-      reload();
+      props.onDecided();
     } catch (e) {
       setMsg(e instanceof KernelError ? e.message : String(e));
     }
   };
 
-  const newPause = async () => {
-    try {
-      await kernel.createHitl({
-        tenant_id: "pgk",
-        session_id: "00000000-0000-4000-8000-000000000001",
-        capability_id: "email.send",
-        payload_digest: "a".repeat(64),
-      });
-      reload();
-    } catch (e) { setMsg(e instanceof KernelError ? e.message : String(e)); }
-  };
-
   return (
-    <div className="hitl-queue">
-      <div className="card">
-        <h3>Cola de aprobaciones (efectos gated)</h3>
-        <p className="meta">Todo efecto externo (AEAT, email, posting) se congela aquí hasta decisión humana. La aprobación sella un intent sobre el digest exacto.</p>
-        <div className="field" style={{ maxWidth: 260 }}>
-          <label>Actor (quién decide)</label>
-          <input value={actor} onChange={(e) => setActor(e.target.value)} />
+    <aside className="right">
+      <div className="rsec">
+        <div className="hd">
+          <div className="label">Aprobaciones</div>
+          {props.pending.length > 0 && <div className="cnt">{props.pending.length}</div>}
         </div>
-        <button className="ghost" onClick={() => void newPause()}>Simular pausa (filing.submit)</button>
-        {msg && <div className="banner ok" style={{ marginTop: 10 }}>{msg}</div>}
+        {props.pending.length === 0 && <div className="rempty">Sin pausas pendientes. Todo efecto externo se congela aquí hasta decisión humana.</div>}
+        {props.pending.map((p) => (
+          <div key={String(p.pause_id)} className="hitl">
+            <div className="cap">{p.capability_id}</div>
+            <div className="sub">sesión {String(p.session_id).slice(0, 8)} · expira {fmtClock(p.expires_at)}</div>
+            <div className="dg">sha256 {p.payload_digest}</div>
+            <div className="btns">
+              <button className="b-ok" onClick={() => void decide(p, "approved")}>Aprobar</button>
+              <button className="b-no" onClick={() => void decide(p, "rejected")}>Rechazar</button>
+            </div>
+          </div>
+        ))}
+        {msg && <div className="rempty">{msg}</div>}
       </div>
-      {pending.length === 0 && <div className="card"><p className="meta">Sin pausas pendientes.</p></div>}
-      {pending.map((p) => (
-        <div key={String(p.pause_id)} className="card pause">
-          <p className="kicker">Efecto gated</p>
-          <h3 className="mono" style={{ fontSize: 14 }}>{p.capability_id}</h3>
-          <span className="meta">sesión {String(p.session_id).slice(0, 8)} · expira {new Date(p.expires_at).toLocaleTimeString()}</span>
-          <div className="digest mono" style={{ margin: "10px 0" }}>
-            <b>digest</b> {p.payload_digest}
-          </div>
-          <div className="actions">
-            <button className="ok" onClick={() => void decide(p, "approved")}>Aprobar</button>
-            <button className="danger" onClick={() => void decide(p, "rejected")}>Rechazar</button>
-          </div>
+
+      <div className="prev">
+        <div className="prev-bar">
+          <span className="ic">⟲</span>
+          <div className="url">{props.session ? `sesión://${String(props.session.session_id).slice(0, 8)}` : "sesión://—"}</div>
         </div>
-      ))}
-    </div>
+        <div className="prev-body">
+          {!props.session && <>Selecciona una sesión para ver su resumen.</>}
+          {props.session && (
+            <>
+              <div className="kv"><span>cliente</span><b>{props.session.clientLabel}</b></div>
+              <div className="kv"><span>periodo</span><b>{props.session.period_ref}</b></div>
+              <div className="kv"><span>adapter</span><b>{props.session.adapter}</b></div>
+              <div className="kv"><span>estado stream</span><b>{props.feed?.phase ?? "sin stream"}</b></div>
+              <div className="kv"><span>acciones</span><b>{props.feed?.items.filter((i) => i.type === "action").length ?? 0}</b></div>
+              <div className="kv"><span>tokens in/out</span><b>{props.feed?.inputTokens ?? 0}/{props.feed?.outputTokens ?? 0}</b></div>
+            </>
+          )}
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -618,7 +808,7 @@ function SystemView(props: { onTenantLoaded: (c: TenantConfig) => void }): JSX.E
       </div>
       <div className="card">
         <h3>White-label (tenant.json)</h3>
-        <p className="meta">Marca, capacidades y gobierno se configuran en el archivo tenant.json del perfil. Cambia la marca y la UI la aplica al reiniciar.</p>
+        <p className="meta">Marca y gobierno se configuran en tenant.json. La marca recolorea SOLO --brand-*; los tokens de confianza (violeta, ok/warn/danger) son constantes del producto.</p>
         <button className="ghost" onClick={() => { void bridge?.shell.branding().then((b) => props.onTenantLoaded(b as TenantConfig)); }}>Recargar branding</button>
       </div>
     </div>
@@ -627,10 +817,7 @@ function SystemView(props: { onTenantLoaded: (c: TenantConfig) => void }): JSX.E
 
 // ---------------------------------------------------------------- oficina
 
-const fmtTime = (iso: string): string => {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
+const fmtTime = (iso: string): string => fmtClock(iso);
 
 const fmtDur = (ms: number): string => {
   const totalMin = Math.floor(ms / 60000);
@@ -730,7 +917,7 @@ function OficinaView(): JSX.Element {
           {relay?.configured ? `relay ${relay.status}` : "local"}
         </span>
         <button
-          className={clock?.in ? "ghost" : ""}
+          className={clock?.in ? "ghost" : "primary"}
           onClick={() => void act(clock?.in ? "clock.out" : "clock.in", { persona })}
         >
           {clock?.in ? "Fichar salida" : "Fichar entrada"}
@@ -815,6 +1002,7 @@ function OficinaView(): JSX.Element {
               </select>
             </div>
             <button
+              className="ghost"
               style={{ alignSelf: "flex-end" }}
               onClick={() => {
                 if (!taskTitle.trim()) return;
