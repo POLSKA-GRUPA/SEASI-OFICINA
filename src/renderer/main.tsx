@@ -7,6 +7,7 @@ import {
   emptyFeed,
   looksLikeUnifiedDiff,
   reduceFeed,
+  summarizeFeed,
   type FeedAction,
   type FeedItem,
   type SessionFeedState,
@@ -305,9 +306,23 @@ function ChatView(props: {
   const [clientRef, setClientRef] = useState("");
   const [period, setPeriod] = useState("2026T3");
 
+  const [queue, setQueue] = useState<string[]>([]);
+
   const feedRef = useRef<HTMLDivElement | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const itemCount = props.feed?.items.length ?? 0;
+
+  // borrador por sesión: sobrevive a cambios de sesión y reinicios de la app
+  useEffect(() => {
+    setPrompt(props.selected ? localStorage.getItem(`seasi.draft.${props.selected}`) ?? "" : "");
+    setQueue([]);
+  }, [props.selected]);
+  useEffect(() => {
+    if (!props.selected) return;
+    const key = `seasi.draft.${props.selected}`;
+    if (prompt) localStorage.setItem(key, prompt);
+    else localStorage.removeItem(key);
+  }, [prompt, props.selected]);
 
   // autoscroll: pegado abajo sigue el stream; si el humano sube, no se le roba el scroll
   useEffect(() => {
@@ -338,15 +353,34 @@ function ChatView(props: {
     } finally { setBusy(false); }
   };
 
-  const send = async () => {
-    if (!props.selected || !prompt.trim() || busy) return;
-    const text = prompt.trim();
-    setBusy(true); setMsg(null); setPrompt("");
+  const runPrompt = useCallback(async (sessionId: string, text: string) => {
+    setBusy(true); setMsg(null);
     try {
-      await kernel.runSession({ tenant_id: "pgk", session_id: props.selected, prompt: text });
+      await kernel.runSession({ tenant_id: "pgk", session_id: sessionId, prompt: text });
     } catch (e) {
       setMsg(e instanceof KernelError ? e.message : String(e));
     } finally { setBusy(false); }
+  }, []);
+
+  // Enter encola: si hay un turno en vuelo, el prompt espera su turno
+  const send = () => {
+    if (!props.selected || !prompt.trim()) return;
+    const text = prompt.trim();
+    setPrompt("");
+    if (busy) setQueue((q) => [...q, text]);
+    else void runPrompt(props.selected, text);
+  };
+
+  useEffect(() => {
+    if (busy || queue.length === 0 || !props.selected) return;
+    const [next, ...rest] = queue;
+    setQueue(rest);
+    if (next !== undefined) void runPrompt(props.selected, next);
+  }, [busy, queue, props.selected, runPrompt]);
+
+  const stop = () => {
+    setQueue([]);
+    setMsg(busy ? "cola vaciada — el turno en curso terminará (cancel en kernel: pendiente en SEASI-CORE)" : "cola vaciada");
   };
 
   const turns = props.feed?.turns ?? 0;
@@ -378,14 +412,10 @@ function ChatView(props: {
           {props.feed?.thinking && (
             <div className="thinking"><div className="orb" />el agente está trabajando…</div>
           )}
-          {props.feed && !props.feed.thinking && props.feed.phase !== "idle" && props.feed.phase !== "running" && (
-            <div className="thinking" style={{ opacity: .8 }}>
-              {props.feed.phase === "completed" && <>✓ sesión completada</>}
-              {props.feed.phase === "paused_hitl" && <>⏸ pausada — esperando aprobación en el panel derecho</>}
-              {props.feed.phase === "failed" && <span style={{ color: "var(--danger)" }}>✗ sesión fallida</span>}
-              {props.feed.phase === "cancelled" && <>⊘ sesión cancelada</>}
-            </div>
+          {props.feed?.phase === "paused_hitl" && !props.feed.thinking && (
+            <div className="thinking" style={{ opacity: .8 }}>⏸ pausada — esperando aprobación en el panel derecho</div>
           )}
+          {props.feed && <SummaryCard feed={props.feed} />}
         </div>
         {!atBottom && itemCount > 0 && (
           <button className="jump" onClick={jumpToLatest}>↓ ir a lo último</button>
@@ -405,23 +435,47 @@ function ChatView(props: {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
             }}
-            placeholder={props.selected ? "Pide lo que quieras — HITL protege todo efecto externo" : "Crea una sesión arriba para empezar"}
-            disabled={!props.selected || busy}
+            placeholder={props.selected
+              ? busy ? "El agente está trabajando — Enter encola tu siguiente encargo" : "Pide lo que quieras — HITL protege todo efecto externo"
+              : "Crea una sesión arriba para empezar"}
+            disabled={!props.selected}
           />
           <div className="row">
             <span className="bpill model">kernel JSON-RPC</span>
             <span className="bpill">HITL ⏸ efectos</span>
-            <span className="bpill">ledger ✓</span>
-            {msg && <span className="bpill" style={{ color: "var(--danger)" }}>{msg.slice(0, 60)}</span>}
-            <button className="send" disabled={!props.selected || !prompt.trim() || busy} onClick={() => void send()}>
-              Enviar ↵
+            {queue.length > 0 && <span className="bpill queued">{queue.length} en cola</span>}
+            {msg && <span className="bpill" style={{ color: "var(--danger)" }}>{msg.slice(0, 80)}</span>}
+            {(busy || queue.length > 0) && (
+              <button className="b-no stopbtn" onClick={stop} title="Vacía la cola de encargos pendientes">■ Parar cola</button>
+            )}
+            <button className="send" disabled={!props.selected || !prompt.trim()} onClick={send}>
+              {busy ? "Encolar ↵" : "Enviar ↵"}
             </button>
           </div>
         </div>
       </div>
     </>
+  );
+}
+
+function SummaryCard({ feed }: { feed: SessionFeedState }): JSX.Element | null {
+  const s = summarizeFeed(feed);
+  if (!s) return null;
+  const tone = s.outcome === "completed" ? "ok" : s.outcome === "failed" ? "fail" : "warn";
+  const headline = s.outcome === "completed" ? "✓ Sesión completada" : s.outcome === "failed" ? "✗ Sesión fallida" : "⊘ Sesión cancelada";
+  return (
+    <div className={`sumcard ${tone}`}>
+      <div className="hd">{headline} · {s.turns} turnos · {s.totalTokens} tokens</div>
+      {s.doneActions.length > 0 && <div className="ln"><span className="k ok">hecho</span>{s.doneActions.join(", ")}</div>}
+      {s.failedActions.length > 0 && <div className="ln"><span className="k fail">falló</span>{s.failedActions.join(", ")}</div>}
+      {s.pendingHitl.length > 0 && <div className="ln"><span className="k warn">esperando HITL</span>{s.pendingHitl.join(", ")}</div>}
+      {s.doneActions.length === 0 && s.failedActions.length === 0 && s.pendingHitl.length === 0 && (
+        <div className="ln"><span className="k">acciones</span>ninguna acción ejecutada</div>
+      )}
+      <div className="ln"><span className="k">siguiente</span>{s.nextStep}</div>
+    </div>
   );
 }
 

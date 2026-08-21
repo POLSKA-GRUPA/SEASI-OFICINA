@@ -4,6 +4,7 @@ import {
   emptyFeed,
   looksLikeUnifiedDiff,
   reduceFeed,
+  summarizeFeed,
   type FeedAction,
   type FeedMessage,
   type SessionFeedState,
@@ -103,6 +104,44 @@ describe("reduceFeed", () => {
   it("kinds desconocidos no alteran el estado", () => {
     const base = fold([ev("spawned"), ev("message", { raw: "x" })]);
     expect(reduceFeed(base, ev("algo_nuevo"))).toBe(base);
+  });
+});
+
+describe("summarizeFeed", () => {
+  it("devuelve null mientras la sesión sigue viva", () => {
+    expect(summarizeFeed(fold([ev("spawned")]))).toBeNull();
+    expect(summarizeFeed(fold([ev("spawned"), ev("hitl_required", { capability_id: "x" })]))).toBeNull();
+  });
+
+  it("resume qué se hizo, qué falló y el siguiente paso", () => {
+    const s = summarizeFeed(fold([
+      ev("spawned"),
+      ev("tool_call", { tool: "leer-facturas" }),
+      ev("tool_result", {}),
+      ev("tool_call", { tool: "presentar-303" }),
+      ev("tool_result", { error: "denegado" }),
+      ev("usage", { input_tokens: 100, output_tokens: 50 }),
+      ev("completed", { returncode: 0 }),
+    ]));
+    expect(s).not.toBeNull();
+    expect(s!.outcome).toBe("completed");
+    expect(s!.doneActions).toEqual(["leer-facturas"]);
+    expect(s!.failedActions).toEqual(["presentar-303"]);
+    expect(s!.totalTokens).toBe(150);
+    expect(s!.nextStep).toContain("siguiente paso");
+  });
+
+  it("prioriza HITL pendiente en el siguiente paso", () => {
+    const base = fold([ev("spawned"), ev("hitl_required", { capability_id: "filing.submit" })]);
+    const s = summarizeFeed(reduceFeed(base, ev("failed", { returncode: 1 })));
+    expect(s!.pendingHitl).toEqual(["filing.submit"]);
+    expect(s!.nextStep).toContain("HITL");
+  });
+
+  it("sesión fallida sin acciones sugiere relanzar", () => {
+    const s = summarizeFeed(fold([ev("spawned"), ev("failed", { returncode: 1 })]));
+    expect(s!.outcome).toBe("failed");
+    expect(s!.nextStep).toContain("relanzar");
   });
 });
 

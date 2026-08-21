@@ -202,6 +202,43 @@ export function reduceFeed(state: SessionFeedState, ev: SessionStreamEvent): Ses
   }
 }
 
+export type FeedSummary = {
+  outcome: "completed" | "failed" | "cancelled";
+  doneActions: string[];
+  failedActions: string[];
+  pendingHitl: string[];
+  turns: number;
+  totalTokens: number;
+  nextStep: string;
+};
+
+/**
+ * Resumen conversacional al cierre de una sesión: qué se hizo, qué no,
+ * y cuál es el siguiente paso. Proyección pura del feed — no consulta
+ * ninguna autoridad.
+ */
+export function summarizeFeed(state: SessionFeedState): FeedSummary | null {
+  if (state.phase !== "completed" && state.phase !== "failed" && state.phase !== "cancelled") return null;
+  const actions = state.items.filter((it): it is FeedAction => it.type === "action");
+  const doneActions = actions.filter((a) => a.status === "ok").map((a) => a.name);
+  const failedActions = actions.filter((a) => a.status === "fail").map((a) => a.name);
+  const pendingHitl = actions.filter((a) => a.status === "warn").map((a) => a.name);
+  let nextStep: string;
+  if (pendingHitl.length > 0) nextStep = "decidir las aprobaciones HITL pendientes en el panel derecho";
+  else if (state.phase === "failed") nextStep = "revisar el error y relanzar el encargo";
+  else if (state.phase === "cancelled") nextStep = "relanzar el encargo si sigue haciendo falta";
+  else nextStep = "revisar el resultado y encargar el siguiente paso";
+  return {
+    outcome: state.phase,
+    doneActions,
+    failedActions,
+    pendingHitl,
+    turns: state.turns,
+    totalTokens: state.inputTokens + state.outputTokens,
+    nextStep,
+  };
+}
+
 export type DiffLineKind = "add" | "del" | "hunk" | "context";
 
 /** Clasifica una línea de diff unificado para colorearla con tokens semánticos. */
